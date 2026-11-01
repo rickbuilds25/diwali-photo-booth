@@ -24,17 +24,17 @@
   // ---- marigolds (genda phool): pre-rendered ruffled pom-poms, shaded like a ball ----
   const MG_SIZE = 128, MG = [];
   const MG_PALETTES = [
-    { base: '#a8380a', mid: '#e8620c', tip: '#ff9a2e', edge: '#7a2604' },   // deep orange
-    { base: '#b8420a', mid: '#f2760f', tip: '#ffae3d', edge: '#83300a' },   // orange
-    { base: '#c46a08', mid: '#f7a21b', tip: '#ffd25a', edge: '#8f4c06' },   // yellow-orange
-    { base: '#c98a0a', mid: '#fbc02a', tip: '#ffe27a', edge: '#946108' },   // yellow
+    { base: '#d4560e', mid: '#f47414', tip: '#ffaa40', edge: '#b84a0c' },   // deep orange
+    { base: '#de640e', mid: '#fa881c', tip: '#ffbc4e', edge: '#c4560c' },   // orange
+    { base: '#e3940f', mid: '#fcb52c', tip: '#ffda62', edge: '#c97e0a' },   // yellow-orange
+    { base: '#e8ad16', mid: '#fdcc38', tip: '#ffe884', edge: '#cc9410' },   // yellow
   ];
   function makeMarigold(pal, seed) {
     const c = mk(MG_SIZE, MG_SIZE), x = c.getContext('2d'), R = MG_SIZE * 0.4, rr = rng(seed);
     x.translate(MG_SIZE / 2, MG_SIZE / 2);
     // soft contact shadow
     const sh = x.createRadialGradient(R * 0.08, R * 0.16, R * 0.5, R * 0.08, R * 0.16, R * 1.12);
-    sh.addColorStop(0, 'rgba(0,0,0,0.45)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+    sh.addColorStop(0, 'rgba(0,0,0,0.32)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
     x.fillStyle = sh; x.beginPath(); x.arc(R * 0.08, R * 0.16, R * 1.12, 0, TAU); x.fill();
     x.fillStyle = pal.edge; x.beginPath(); x.arc(0, 0, R * 0.98, 0, TAU); x.fill();
     // petals: many crinkled fans, outer ones first so the centre ones sit on top
@@ -51,13 +51,13 @@
       const inner = p.d / R;
       g.addColorStop(0, pal.base); g.addColorStop(0.45, pal.mid); g.addColorStop(1, inner < 0.35 ? pal.mid : pal.tip);
       x.fillStyle = g; x.fill();
-      x.strokeStyle = 'rgba(90,25,0,0.35)'; x.lineWidth = 0.7; x.stroke();
+      x.strokeStyle = 'rgba(140,50,0,0.18)'; x.lineWidth = 0.6; x.stroke();
       x.restore();
     }
     // ball shading: light from the top left, shade at the bottom right
     x.globalCompositeOperation = 'source-atop';
     const hl = x.createRadialGradient(-R * 0.38, -R * 0.42, 0, -R * 0.2, -R * 0.25, R * 1.1);
-    hl.addColorStop(0, 'rgba(255,245,210,0.38)'); hl.addColorStop(0.45, 'rgba(255,230,170,0.06)'); hl.addColorStop(1, 'rgba(70,15,0,0.5)');
+    hl.addColorStop(0, 'rgba(255,248,220,0.42)'); hl.addColorStop(0.5, 'rgba(255,235,180,0.05)'); hl.addColorStop(1, 'rgba(120,40,0,0.24)');
     x.fillStyle = hl; x.fillRect(-MG_SIZE / 2, -MG_SIZE / 2, MG_SIZE, MG_SIZE);
     return c;
   }
