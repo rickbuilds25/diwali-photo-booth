@@ -120,6 +120,56 @@
     x.restore();
   }
 
+  // Hanging ornament at the end of each ladiya: red bead, gold knot, and a gold filigree
+  // pendant with a glossy orange centre. Drawn once into its own canvas at 2x.
+  function makePendant() {
+    const K = 2, c = mk(80 * K, 150 * K), x = c.getContext('2d');
+    x.scale(K, K); x.translate(40, 0);
+    const goldG = (y0, y1) => { const g = x.createLinearGradient(-30, y0, 30, y1); g.addColorStop(0, '#fff0b0'); g.addColorStop(0.35, '#f7c84a'); g.addColorStop(0.7, '#e0a024'); g.addColorStop(1, '#b8780e'); return g; };
+    // red bead
+    const by = 9; let g = x.createRadialGradient(-2.5, by - 3, 0.5, 0, by, 9);
+    g.addColorStop(0, '#ff9a7a'); g.addColorStop(0.35, '#d8452a'); g.addColorStop(1, '#7a1606');
+    x.fillStyle = g; x.beginPath(); x.ellipse(0, by, 7.5, 9, 0, 0, TAU); x.fill();
+    // gold knot with a little spiral
+    const ky = 27; x.fillStyle = goldG(ky - 7, ky + 7); x.beginPath(); x.ellipse(0, ky, 10, 7.5, 0, 0, TAU); x.fill();
+    x.strokeStyle = '#a8690c'; x.lineWidth = 1.2; x.beginPath();
+    for (let t = 0; t < 4.2 * Math.PI; t += 0.15) { const rr = 1 + t * 0.48; const px = Math.cos(t) * rr * 1.25, py = ky + Math.sin(t) * rr * 0.9; if (t) x.lineTo(px, py); else x.moveTo(px, py); }
+    x.stroke();
+    x.strokeStyle = '#ffeaa0'; x.lineWidth = 1; x.beginPath(); x.ellipse(0, ky, 10, 7.5, 0, Math.PI * 1.1, Math.PI * 1.7); x.stroke();
+    // filigree pendant: a teardrop of gold lace around a glossy orange ball
+    const cy = 72, R = 31, D = 46, al = Math.acos(R / D);
+    const drop = () => { x.beginPath(); x.moveTo(0, cy + D); x.lineTo(Math.cos(Math.PI / 2 - al) * R, cy + Math.sin(Math.PI / 2 - al) * R); x.arc(0, cy, R, Math.PI / 2 - al, Math.PI / 2 + al, true); x.closePath(); };
+    x.save(); x.shadowColor = 'rgba(0,0,0,0.4)'; x.shadowBlur = 6; x.shadowOffsetY = 3; drop(); x.fillStyle = goldG(cy - R, cy + D); x.fill(); x.restore();
+    // punch the lace holes in the gold band
+    x.save(); drop(); x.clip(); x.globalCompositeOperation = 'destination-out'; x.fillStyle = '#000';
+    for (let yy = cy - R; yy < cy + D; yy += 4.6) for (let xx = -R + ((Math.round((yy - cy) / 4.6) & 1) ? 2.3 : 0); xx < R; xx += 4.6) {
+      const d = Math.hypot(xx, yy - cy); if (d < 22.5) continue;
+      x.beginPath(); x.arc(xx, yy, 1.35, 0, TAU); x.fill();
+    }
+    x.restore();
+    // beaded edge
+    x.fillStyle = '#ffe28a';
+    const edge = []; for (let k = 0; k <= 46; k++) { const a = Math.PI / 2 + al + k / 46 * (TAU - 2 * al); edge.push([Math.cos(a) * R, cy + Math.sin(a) * R]); }
+    const p1 = edge[edge.length - 1], p0 = edge[0];
+    for (let k = 1; k < 6; k++) { const t = k / 6; edge.push([p1[0] * (1 - t), p1[1] + (cy + D - p1[1]) * t]); edge.push([p0[0] * (1 - t), p0[1] + (cy + D - p0[1]) * t]); }
+    for (const [ex, ey] of edge) { x.beginPath(); x.arc(ex, ey, 1.9, 0, TAU); x.fill(); }
+    // inner rim and the orange ball
+    x.strokeStyle = goldG(cy - 22, cy + 22); x.lineWidth = 3.2; x.beginPath(); x.arc(0, cy, 21, 0, TAU); x.stroke();
+    x.fillStyle = '#ffe28a'; for (let k = 0; k < 28; k++) { const a = k / 28 * TAU; x.beginPath(); x.arc(Math.cos(a) * 24.2, cy + Math.sin(a) * 24.2, 1.2, 0, TAU); x.fill(); }
+    g = x.createRadialGradient(-6, cy - 7, 1, 0, cy, 19);
+    g.addColorStop(0, '#ffd59a'); g.addColorStop(0.3, '#f7902e'); g.addColorStop(0.75, '#d9561a'); g.addColorStop(1, '#9a3008');
+    x.fillStyle = g; x.beginPath(); x.arc(0, cy, 18.5, 0, TAU); x.fill();
+    x.fillStyle = 'rgba(255,255,255,0.75)'; x.beginPath(); x.ellipse(-6.5, cy - 8, 4.5, 2.8, -0.6, 0, TAU); x.fill();
+    // little gold drop at the point
+    x.fillStyle = goldG(cy + D, cy + D + 10); x.beginPath(); x.arc(0, cy + D + 4, 3.6, 0, TAU); x.fill();
+    return c;
+  }
+  function bead(x, cx, cy, r) {
+    const g = x.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.1, cx, cy, r);
+    g.addColorStop(0, '#ff9a7a'); g.addColorStop(0.45, '#d8452a'); g.addColorStop(1, '#8a1c08');
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, TAU); x.fill();
+  }
+
   // Minimal overlay: the photo runs edge to edge; the frame adds only a slim marigold toran,
   // a fine gold inset line and a small stamp over a soft shadow at the bottom.
   function buildOverlay() {
@@ -139,16 +189,16 @@
 
     // toran: the original four-swag marigold garland, with strands down both sides and mango leaves at each knot
     const anchors = [26, 290, 540, 790, 1054], AY = 40, SAG = 58;
-    // ladiya: the hanging strands at both ends, each with two small diyas strung in
+    // ladiya: marigolds for the first part, then a beaded thread ending in a gold pendant
     const LAD = []; { let y = AY;
-      for (let j = 0; j < 7; j++) { y += 31; LAD.push({ k: 'f', y }); }
-      y += 48; LAD.push({ k: 'd', y }); y += 24;
-      for (let j = 0; j < 6; j++) { y += 31; LAD.push({ k: 'f', y }); }
-      y += 48; LAD.push({ k: 'd', y }); }
+      for (let j = 0; j < 8; j++) { y += 31; LAD.push({ k: 'f', y }); }
+      y += 10; for (let j = 0; j < 17; j++) { y += 15; LAD.push({ k: 'b', y }); }
+      y += 10; LAD.push({ k: 'p', y }); }
     const LAD_END = LAD[LAD.length - 1].y;
+    const PEND = makePendant(), PS = 0.9;
     x.strokeStyle = 'rgba(240,225,190,0.55)'; x.lineWidth = 1.5; x.beginPath();
     for (let s2 = 0; s2 < 4; s2++) for (let i = 0; i <= 40; i++) { const u = i / 40, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u); if (!s2 && !i) x.moveTo(gx, gy); else x.lineTo(gx, gy); }
-    for (const sx of [26, 1054]) { x.moveTo(sx, AY); x.lineTo(sx, LAD_END - 8); }
+    for (const sx of [30, 1050]) { x.moveTo(sx === 30 ? 26 : 1054, AY); x.lineTo(sx, LAD_END + 2); }
     x.stroke();
     for (let s2 = 0; s2 < 4; s2++) {
       const n = 11;
@@ -157,19 +207,13 @@
         marigold(x, gx, gy, 17, r() * TAU);
       }
     }
-    for (const sx of [26, 1054]) {
+    for (const [ax, sx] of [[26, 30], [1054, 1050]]) {
       for (const it of LAD) {
-        if (it.k === 'f') marigold(x, sx, it.y, 15, r() * TAU);
-        else { // a small diya hanging on the strand: the thread ties to its rim
-          x.strokeStyle = 'rgba(240,225,190,0.7)'; x.lineWidth = 1.2;
-          x.beginPath(); x.moveTo(sx, it.y - 38); x.lineTo(sx - 17, it.y - 4); x.moveTo(sx, it.y - 38); x.lineTo(sx + 17, it.y - 4); x.stroke();
-          diya(x, sx, it.y, 0.5);
-        }
+        const px = ax + (sx - ax) * Math.min(1, (it.y - AY) / 260);
+        if (it.k === 'f') marigold(x, px, it.y, 15, r() * TAU);
+        else if (it.k === 'b') bead(x, sx, it.y, 3.3);
+        else x.drawImage(PEND, sx - 40 * PS, it.y, 80 * PS, 150 * PS);
       }
-      // gold tassel under the last diya
-      const ty = LAD_END + 12; x.fillStyle = '#ffcf6a';
-      x.beginPath(); x.arc(sx, ty, 4, 0, TAU); x.fill();
-      x.beginPath(); x.moveTo(sx, ty + 2); x.lineTo(sx - 7, ty + 30); x.lineTo(sx + 7, ty + 30); x.closePath(); x.fill();
     }
     for (const ax of anchors) { for (const a of [-0.55, 0, 0.55]) leaf(x, ax, AY - 4, 46, a); marigold(x, ax, AY, 21, r() * TAU); }
 
