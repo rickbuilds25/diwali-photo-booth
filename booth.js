@@ -56,9 +56,28 @@ async function tx(mode, fn) {
   const db = await idb();
   return new Promise((res, rej) => { const t = db.transaction(STORE, mode); const out = fn(t.objectStore(STORE)); t.oncomplete = () => res(out && out.result !== undefined ? out.result : out); t.onerror = () => rej(t.error); });
 }
-const putPhoto = p => tx('readwrite', s => s.put(p));
-const allPhotos = async () => { const r = await tx('readonly', s => s.getAll()); return (r || []).sort((a, b) => b.ts - a.ts); };
-const clearPhotos = () => tx('readwrite', s => s.clear());
+// Photos live in memory for this session and are copied to the device's storage when the browser
+// allows it. A private window (or blocked site data) refuses storage: the booth keeps working from
+// memory and warns that photos last only while the page stays open.
+const MEM = new Map();
+let storageOK = true;
+async function putPhoto(p) {
+  MEM.set(p.id, p);
+  try { await tx('readwrite', s => s.put(p)); } catch (e) { if (storageOK) console.warn('This browser is not keeping photos:', e); storageOK = false; }
+}
+async function allPhotos() {
+  let r = [];
+  try { r = (await tx('readonly', s => s.getAll())) || []; } catch (e) { storageOK = false; }
+  for (const x of r) if (x && x.blob && !MEM.has(x.id)) MEM.set(x.id, x);       // skip the storage check's test entry
+  return [...MEM.values()].sort((a, b) => b.ts - a.ts);
+}
+async function clearPhotos() { MEM.clear(); try { await tx('readwrite', s => s.clear()); } catch (e) { storageOK = false; } }
+async function probeStorage() {
+  try { await tx('readwrite', s => s.put({ id: '__probe', ts: 0 })); await tx('readwrite', s => s.delete('__probe')); }
+  catch (e) { storageOK = false; }
+  return storageOK;
+}
+const STORAGE_WARNING = 'This browser is not keeping photos on the device (a private window does this). They stay only while this page is open, so save and upload them before closing it, or reopen the booth in a normal window.';
 let rollUrls = [];
 async function refreshRoll() {
   let list = [];
@@ -340,7 +359,7 @@ async function openRoll() {
     grid.appendChild(b);
   }
   $('clearAll').textContent = 'Delete all'; $('clearAll').dataset.armed = '';
-  $('rollNote').textContent = IOS
+  if (!storageOK) $('rollNote').textContent = STORAGE_WARNING; else $('rollNote').textContent = IOS
     ? 'Photos are kept on this iPad. Tap the gold button, then choose "Save Images" to put them in Photos. A tick marks the ones already saved.'
     : 'Every photo has already gone to Downloads. You can save them again from here.';
   markTiles(); updRollBtns(); $('roll').hidden = false;
@@ -392,6 +411,7 @@ $('clearAll').addEventListener('click', async () => {
 document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { if (!$('start').hidden) return; e.preventDefault(); if (!$('review').hidden) closeReview(); else startCountdown(); } });
 
 if (DEBUG) $('debug').hidden = false;
+probeStorage().then(ok => { if (!ok) { $('startErr').textContent = STORAGE_WARNING; $('startErr').hidden = false; } });
 $('galleryState').textContent = GALLERY_ON ? 'Guest gallery: connected. Saved photos are sent to it.' : 'Guest gallery: not set up on this device yet.';
 $('liveUpload').checked = liveUpload; $('liveUpload').disabled = !GALLERY_ON;
 $('liveUpload').addEventListener('change', e => { liveUpload = e.target.checked; store.set('live-upload', liveUpload ? '1' : '0'); });
