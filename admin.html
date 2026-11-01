@@ -43,6 +43,13 @@
   .yes { padding: 11px 18px; border-radius: 999px; font-weight: 700; color: #3a0a0a; background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); }
   .no { padding: 11px 16px; border-radius: 999px; font-weight: 600; border: 1px solid var(--line); }
   .none { color: var(--ink-dim); font-size: 15px; padding: 6px 2px; }
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(30%, 150px), 1fr)); gap: 8px; }
+  .ph { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 5; background: var(--velvet); }
+  .ph img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .ph button { position: absolute; left: 6px; right: 6px; bottom: 6px; padding: 8px 6px; border-radius: 999px; font-size: 13px; font-weight: 700;
+    background: rgba(22,3,10,0.82); border: 1px solid var(--line); color: var(--ink); }
+  .ph button.arm { background: #b3261e; border-color: #ff9a88; color: #fff; }
+  .ph.gone { opacity: 0.35; pointer-events: none; }
   .msg { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); color: var(--no); }
 </style>
 </head>
@@ -63,6 +70,10 @@
   <div class="list" id="approved"><p class="none">No one approved yet.</p></div>
   <h2>Not allowed <span id="nNo"></span></h2>
   <div class="list" id="denied"><p class="none">No one.</p></div>
+
+  <h2>Photos in the gallery <span id="nPh"></span></h2>
+  <p class="none" id="phNote">Tap Delete, then tap again to confirm. A deleted photo goes to the bin in your Google Drive (kept for 30 days) and disappears from guests' phones within about 20 seconds.</p>
+  <div class="pgrid" id="pgrid"></div>
 </main>
 <script src="config.js"></script>
 <script>
@@ -144,7 +155,69 @@
     busy.delete(token); refresh();
   }
   $('approveAll').addEventListener('click', async () => { for (const g of guests.filter(x => x.status === 'pending')) await decide(g.token, 'approved'); });
-  refresh(); setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
+  // ---------- photos ----------
+  let photoList = [], thumbs = new Map(), pulling = false, lastPhotos = 0, deleting = new Set();
+  const adminGet = q => fetch(`${SCRIPT}?admin=${encodeURIComponent(ADMIN)}&${q}&t=${Date.now()}`).then(r => r.json());
+  async function loadPhotos() {
+    try {
+      const j = await adminGet('op=photos'); if (!j.ok) return;
+      photoList = j.photos.filter(p => !deleting.has(p.id)); drawPhotos(); pullThumbs();
+    } catch (e) {}
+  }
+  async function pullThumbs() {
+    if (pulling) return; pulling = true;
+    try {
+      for (;;) {
+        const need = photoList.filter(p => !thumbs.has(p.id)).slice(0, 12).map(p => p.id);
+        if (!need.length) break;
+        const j = await adminGet('op=thumbs&ids=' + need.map(encodeURIComponent).join(',')); if (!j.ok) break;
+        for (const id of need) {
+          const d = j.thumbs[id]; let u = '';
+          if (d) { const bin = atob(d), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); u = URL.createObjectURL(new Blob([a], { type: 'image/jpeg' })); }
+          thumbs.set(id, u); const img = $('pgrid').querySelector(`[data-id="${CSS.escape(id)}"] img`); if (img && u) img.src = u;
+        }
+      }
+    } catch (e) {}
+    pulling = false;
+  }
+  function drawPhotos() {
+    $('nPh').textContent = photoList.length || '';
+    const grid = $('pgrid'), have = new Map([...grid.children].map(el => [el.dataset.id, el]));
+    const frag = document.createDocumentFragment();
+    for (const p of photoList) {
+      let el = have.get(p.id);
+      if (!el) {
+        el = document.createElement('div'); el.className = 'ph'; el.dataset.id = p.id;
+        const img = document.createElement('img'); img.alt = ''; if (thumbs.get(p.id)) img.src = thumbs.get(p.id);
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Delete';
+        b.addEventListener('click', () => removePhoto(p.id, el, b));
+        el.append(img, b);
+      }
+      frag.appendChild(el);
+    }
+    grid.replaceChildren(frag);
+    if (!photoList.length) { const n = document.createElement('p'); n.className = 'none'; n.textContent = 'No photos in the gallery yet.'; grid.appendChild(n); }
+  }
+  async function removePhoto(id, el, b) {
+    if (!b.classList.contains('arm')) {
+      b.classList.add('arm'); b.textContent = 'Tap again to delete';
+      setTimeout(() => { if (b.isConnected && b.classList.contains('arm')) { b.classList.remove('arm'); b.textContent = 'Delete'; } }, 4000);
+      return;
+    }
+    deleting.add(id); el.classList.add('gone'); b.textContent = 'Deleting…';
+    try {
+      const j = await (await fetch(SCRIPT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ admin: ADMIN, action: 'delete', id }) })).json();
+      if (!j.ok && j.error !== 'not_found') throw new Error(j.error);
+      photoList = photoList.filter(p => p.id !== id); drawPhotos();
+    } catch (e) {
+      deleting.delete(id); el.classList.remove('gone'); b.classList.remove('arm'); b.textContent = 'Delete';
+      msg(e.message === 'bad_key' ? 'Deleting needs the updated script. Redeploy it as a new version.' : 'That photo was not deleted. Try again.');
+    }
+  }
+
+  refresh(); loadPhotos();
+  setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
+  setInterval(() => { if (document.visibilityState === 'visible') loadPhotos(); }, 15000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
 })();
 </script>
