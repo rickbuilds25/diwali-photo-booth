@@ -9,7 +9,7 @@
   'use strict';
   const W = 1080, H = 1350;
   const PHOTO = { x: 60, y: 150, w: 960, h: 980, r: 22 };
-  const STAMP_1 = "Arindam & Pawnita's";
+  const STAMP_1 = "Arindam, Pawnita & Rian's";
   const STAMP_2 = 'DIWALI PARTY 2026';
   const TOPLINE = 'शुभ दीपावली';
   const SERIF = "'Cormorant Garamond', Georgia, 'Times New Roman', serif";
@@ -122,7 +122,9 @@
     rangoliCorner(x, 40, H - 30, 1.1, false); rangoliCorner(x, W - 40, H - 30, 1.1, true);
     diya(x, 150, H - 70, 1.25); diya(x, W - 150, H - 70, 1.25);
     const cyA = BY + 62, cyB = BY + 150;
-    x.font = `italic 600 64px ${SERIF}`; x.fillStyle = gold(x, cyA - 34, cyA + 30);
+    let fs = 64; x.font = `italic 600 ${fs}px ${SERIF}`;
+    while (x.measureText(STAMP_1).width > 600 && fs > 40) { fs -= 2; x.font = `italic 600 ${fs}px ${SERIF}`; }   // fit between the diyas
+    x.fillStyle = gold(x, cyA - 34, cyA + 30);
     x.shadowColor = 'rgba(255,150,40,0.55)'; x.shadowBlur = 16; x.fillText(STAMP_1, W / 2, cyA); x.shadowBlur = 0;
     x.font = `38px ${DISPLAY}`; if ('letterSpacing' in x) x.letterSpacing = '7px';
     x.fillStyle = gold(x, cyB - 20, cyB + 20); x.fillText(STAMP_2, W / 2, cyB);

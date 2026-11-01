@@ -68,7 +68,10 @@ async function refreshRoll() {
 const fname = ts => { const d = new Date(ts), p = n => String(n).padStart(2, '0'); return `diwali-2026-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${String(ts).slice(-3)}.jpg`; };
 async function savePhotos(items) {
   const files = items.map(p => new File([p.blob], fname(p.ts), { type: 'image/jpeg' }));
-  if (navigator.canShare && navigator.canShare({ files })) {
+  // Phones and tablets get the share sheet ("Save Image" puts it in Photos);
+  // laptops and desktops save straight to the Downloads folder.
+  const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  if (touch && navigator.canShare && navigator.canShare({ files })) {
     try { await navigator.share({ files, title: 'Diwali Party 2026' }); return 'shared'; }
     catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; }
   }
@@ -90,33 +93,56 @@ async function openCamera() {
 }
 
 // ---------- smile detection (MediaPipe Face Landmarker, served from this site) ----------
+// The face detector is built for faces close to the camera. To catch people standing a few
+// metres back, a second detector looks at a 2x zoomed crop of the middle of the picture,
+// where people stand in the photo. The two take turns; the one that sees more faces wins.
+let farLandmarker = null;
+const ZOOM = clampNum(+Q.get('zoom'), 1.2, 4, 2);
+const crop = document.createElement('canvas'), cropX = crop.getContext('2d');
+const seen = { near: { faces: 0, scores: [], t: 0 }, far: { faces: 0, scores: [], t: 0 } };
+let turn = 0;
 async function loadDetector() {
   try {
     const { FilesetResolver, FaceLandmarker } = await import('./vendor/mediapipe/vision_bundle.mjs');
     const files = await FilesetResolver.forVisionTasks(new URL('./vendor/mediapipe/wasm', location.href).href);
     const opts = d => ({ baseOptions: { modelAssetPath: new URL('./models/face_landmarker.task', location.href).href, delegate: d },
-      runningMode: 'VIDEO', numFaces: 6, outputFaceBlendshapes: true, minFaceDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    try { landmarker = await FaceLandmarker.createFromOptions(files, opts('GPU')); }
-    catch (e) { landmarker = await FaceLandmarker.createFromOptions(files, opts('CPU')); }
+      runningMode: 'VIDEO', numFaces: 6, outputFaceBlendshapes: true, minFaceDetectionConfidence: 0.4, minFacePresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
+    const make = async () => { try { return await FaceLandmarker.createFromOptions(files, opts('GPU')); } catch (e) { return FaceLandmarker.createFromOptions(files, opts('CPU')); } };
+    landmarker = await make();
     detectOK = true;
+    try { farLandmarker = await make(); } catch (e) { farLandmarker = null; }
   } catch (e) {
     console.warn('Smile detection unavailable:', e);
     detectOK = false;
   }
 }
-function detect(now) {
-  if (!detectOK || !video.videoWidth || now - lastDetect < 70) return;
-  lastDetect = now;
-  let res;
-  try { res = landmarker.detectForVideo(video, now); } catch (e) { return; }
-  const shapes = res.faceBlendshapes || [];
-  faces = shapes.length; smiling = 0; bestScore = 0;
-  for (const f of shapes) {
+function smileScores(res) {
+  return (res.faceBlendshapes || []).map(f => {
     let l = 0, r = 0;
     for (const c of f.categories) { if (c.categoryName === 'mouthSmileLeft') l = c.score; else if (c.categoryName === 'mouthSmileRight') r = c.score; }
-    const s = (l + r) / 2; bestScore = Math.max(bestScore, s);
-    if (s >= SENS) smiling++;
-  }
+    return (l + r) / 2;
+  });
+}
+function detect(now) {
+  if (!detectOK || !video.videoWidth || now - lastDetect < 60) return;
+  lastDetect = now;
+  const useFar = farLandmarker && (turn++ % 2 === 1);
+  try {
+    if (useFar) {
+      const vw = video.videoWidth, vh = video.videoHeight, cw = vw / ZOOM, ch = vh / ZOOM;
+      const sx = (vw - cw) / 2, sy = Math.max(0, Math.min(vh - ch, vh * 0.42 - ch / 2));   // faces sit a little above the middle
+      const k = Math.min(1, 960 / cw); crop.width = Math.round(cw * k); crop.height = Math.round(ch * k);
+      cropX.drawImage(video, sx, sy, cw, ch, 0, 0, crop.width, crop.height);
+      const s = smileScores(farLandmarker.detectForVideo(crop, now));
+      seen.far = { faces: s.length, scores: s, t: now };
+    } else {
+      const s = smileScores(landmarker.detectForVideo(video, now));
+      seen.near = { faces: s.length, scores: s, t: now };
+    }
+  } catch (e) { return; }
+  const fresh = r => now - r.t < 400 ? r : { faces: 0, scores: [] };
+  const a = fresh(seen.near), b = fresh(seen.far), best = b.faces > a.faces ? b : a;
+  faces = best.faces; bestScore = Math.max(0, ...best.scores); smiling = best.scores.filter(s => s >= SENS).length;
 }
 
 // ---------- states ----------
@@ -181,7 +207,7 @@ function loop(now) {
     else if (countEl.textContent !== String(n)) showCount(n);
   }
   ring.style.strokeDashoffset = String(RING_LEN * (1 - (state === 'countdown' ? Math.min(1, stateT / COUNT) : Math.min(1, hold / HOLD))));
-  if (DEBUG) $('debug').textContent = `state ${state}\nfaces ${faces}  smiling ${smiling}\nbest ${bestScore.toFixed(2)}  need ${SENS}\nhold ${hold.toFixed(2)} / ${HOLD}\ndetector ${detectOK ? 'on' : 'off'}`;
+  if (DEBUG) $('debug').textContent = `state ${state}\nfaces ${faces}  smiling ${smiling}\nbest ${bestScore.toFixed(2)}  need ${SENS}\nhold ${hold.toFixed(2)} / ${HOLD}\ndetector ${detectOK ? 'on' : 'off'}  zoom ${farLandmarker ? ZOOM + 'x' : 'off'}\nnear ${seen.near.faces} faces  far ${seen.far.faces} faces`;
   requestAnimationFrame(loop);
 }
 
