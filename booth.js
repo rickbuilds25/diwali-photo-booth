@@ -133,8 +133,8 @@ async function markExported(items) { for (const p of items) { p.exported = true;
 const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
 if (Q.get('upload')) store.set('gallery-key', Q.get('upload'));
 if (Q.get('gallery')) store.set('gallery-url', Q.get('gallery'));
-const GALLERY_URL = store.get('gallery-url') || (window.BOOTH_CONFIG && BOOTH_CONFIG.script) || '';
-const GALLERY_KEY = store.get('gallery-key') || '';
+const GALLERY_URL = Q.get('gallery') || store.get('gallery-url') || (window.BOOTH_CONFIG && BOOTH_CONFIG.script) || '';
+const GALLERY_KEY = Q.get('upload') || store.get('gallery-key') || '';   // the link itself works even if the browser won't remember it
 const GALLERY_ON = !!(GALLERY_URL && GALLERY_KEY);
 let liveUpload = store.get('live-upload') === '1';
 let upBusy = false, upFails = 0, upTimer = 0, upError = '';
