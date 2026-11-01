@@ -76,8 +76,8 @@
     const c = mk(W, H), x = c.getContext('2d');
     const r = rng(11);
     // soft shade at the top so the garland reads, and at the bottom for the stamp
-    const top = x.createLinearGradient(0, 0, 0, 170); top.addColorStop(0, 'rgba(20,4,6,0.38)'); top.addColorStop(1, 'rgba(20,4,6,0)');
-    x.fillStyle = top; x.fillRect(0, 0, W, 170);
+    const top = x.createLinearGradient(0, 0, 0, 230); top.addColorStop(0, 'rgba(20,4,6,0.38)'); top.addColorStop(1, 'rgba(20,4,6,0)');
+    x.fillStyle = top; x.fillRect(0, 0, W, 230);
     const bot = x.createLinearGradient(0, H - 330, 0, H); bot.addColorStop(0, 'rgba(20,4,6,0)'); bot.addColorStop(0.55, 'rgba(20,4,6,0.42)'); bot.addColorStop(1, 'rgba(20,4,6,0.78)');
     x.fillStyle = bot; x.fillRect(0, H - 330, W, 330);
 
@@ -87,17 +87,18 @@
     x.fillStyle = '#f6c453';
     for (const [cx, cy] of [[I, I], [W - I, I], [I, H - I], [W - I, H - I]]) { x.beginPath(); x.moveTo(cx, cy - 7); x.lineTo(cx + 7, cy); x.lineTo(cx, cy + 7); x.lineTo(cx - 7, cy); x.closePath(); x.fill(); }
 
-    // toran: one marigold swag across the top, short strands at the ends, mango leaves at the knots
-    const AY = 18, SAG = 46, n = 34;
-    const swagY = px => { const u = (px + 10) / (W + 20); return AY + SAG * 4 * u * (1 - u); };
-    for (const lx of [W / 2 - 300, W / 2 - 150, W / 2 + 150, W / 2 + 300]) for (const a of [-0.55, 0.55]) leaf(x, lx, swagY(lx) - 4, 40, a);
-    for (const a of [-0.5, 0, 0.5]) leaf(x, W / 2, swagY(W / 2) - 4, 46, a);
-    for (let i = 0; i <= n; i++) { const u = i / n; marigold(x, -10 + (W + 20) * u, AY + SAG * 4 * u * (1 - u), 12.5, r() * TAU); }
-    for (const sx of [14, W - 14]) {
-      for (let j = 1; j <= 4; j++) marigold(x, sx, AY + j * 23, j === 4 ? 14 : 11.5, r() * TAU);
-      x.fillStyle = '#f6c453'; x.beginPath(); x.moveTo(sx, AY + 4 * 23 + 13); x.lineTo(sx - 5, AY + 4 * 23 + 32); x.lineTo(sx + 5, AY + 4 * 23 + 32); x.closePath(); x.fill();
+    // toran: the original four-swag marigold garland, with strands down both sides and mango leaves at each knot
+    const anchors = [26, 290, 540, 790, 1054], AY = 40, SAG = 58;
+    for (let s2 = 0; s2 < 4; s2++) {
+      const n = 11;
+      for (let i = 0; i <= n; i++) {
+        const u = i / n, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u);
+        marigold(x, gx, gy, 17, r() * TAU);
+      }
     }
-    marigold(x, W / 2, AY + SAG, 15, 0.4);
+    for (const sx of [26, 1054]) for (let j = 1; j <= 9; j++) marigold(x, sx, AY + j * 33, j === 9 ? 19 : 15, r() * TAU);
+    for (const sx of [26, 1054]) { x.fillStyle = '#ffcf6a'; x.beginPath(); x.moveTo(sx, AY + 9 * 33 + 18); x.lineTo(sx - 7, AY + 9 * 33 + 44); x.lineTo(sx + 7, AY + 9 * 33 + 44); x.closePath(); x.fill(); }
+    for (const ax of anchors) { for (const a of [-0.55, 0, 0.55]) leaf(x, ax, AY - 4, 46, a); marigold(x, ax, AY, 21, r() * TAU); }
 
     // stamp: a small diya, the names in italic, the occasion in small caps
     x.textAlign = 'center'; x.textBaseline = 'middle';

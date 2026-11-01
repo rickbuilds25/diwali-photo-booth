@@ -1,11 +1,12 @@
 // Diwali Photo Booth — live camera, smile trigger, countdown, framed photo, local photo roll.
 // URL options: ?sens=0.45 (smile threshold 0–1), ?hold=0.7 (seconds a smile must last),
-//              ?count=3 (countdown seconds), ?cam=back (start on the rear camera), ?debug
+//              ?count=3 (countdown seconds), ?preview=10 (seconds each photo shows before it saves),
+//              ?cam=back (start on the rear camera), ?zoom=2, ?debug
 const Q = new URLSearchParams(location.search);
 const SENS = clampNum(+Q.get('sens'), 0.15, 0.9, 0.45);
 const HOLD = clampNum(+Q.get('hold'), 0.2, 3, 0.7);
 const COUNT = Math.round(clampNum(+Q.get('count'), 1, 10, 3));
-const REVIEW_S = 7, COOLDOWN_S = 2.5;
+const REVIEW_S = clampNum(+Q.get('preview'), 2, 60, 10), COOLDOWN_S = 2.5;
 const DEBUG = Q.has('debug');
 function clampNum(v, a, b, d) { return Number.isFinite(v) && v > 0 ? Math.min(b, Math.max(a, v)) : d; }
 
@@ -66,8 +67,22 @@ async function refreshRoll() {
 
 // ---------- saving ----------
 const fname = ts => { const d = new Date(ts), p = n => String(n).padStart(2, '0'); return `diwali-2026-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${String(ts).slice(-3)}.jpg`; };
+const rawName = ts => fname(ts).replace('.jpg', '-original.jpg');
+function downloadFile(blob, name) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+// Each photo saves itself when its preview ends: the framed copy, then the original without the frame.
+async function autoSave(p) {
+  if (!p || p.saved) return;
+  p.saved = true;
+  downloadFile(p.blob, fname(p.ts));
+  if (p.raw) { await new Promise(r => setTimeout(r, 400)); downloadFile(p.raw, rawName(p.ts)); }
+  try { await putPhoto(p); } catch (e) { /* the saved flag is only a convenience */ }
+}
 async function savePhotos(items) {
-  const files = items.map(p => new File([p.blob], fname(p.ts), { type: 'image/jpeg' }));
+  const files = [];
+  for (const p of items) { files.push(new File([p.blob], fname(p.ts), { type: 'image/jpeg' })); if (p.raw) files.push(new File([p.raw], rawName(p.ts), { type: 'image/jpeg' })); }
   // Phones and tablets get the share sheet ("Save Image" puts it in Photos);
   // laptops and desktops save straight to the Downloads folder.
   const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
@@ -158,9 +173,12 @@ async function capture() {
   shutterSound();
   const f = $('flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
   countEl.innerHTML = '';
-  const c = DiwaliFrame.compose(video, video.videoWidth, video.videoHeight, facing === 'user');
-  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
-  const p = { id: `p${Date.now()}`, ts: Date.now(), blob };
+  const vw = video.videoWidth, vh = video.videoHeight, mirror = facing === 'user';
+  const raw = document.createElement('canvas'); raw.width = vw; raw.height = vh;   // the full camera picture, as guests saw it
+  const rx = raw.getContext('2d'); if (mirror) { rx.translate(vw, 0); rx.scale(-1, 1); } rx.drawImage(video, 0, 0, vw, vh);
+  const c = DiwaliFrame.compose(raw, vw, vh, false);
+  const [blob, rawBlob] = await Promise.all([new Promise(r => c.toBlob(r, 'image/jpeg', 0.92)), new Promise(r => raw.toBlob(r, 'image/jpeg', 0.95))]);
+  const p = { id: `p${Date.now()}`, ts: Date.now(), blob, raw: rawBlob, saved: false };
   try { await putPhoto(p); } catch (e) { console.warn('Could not keep photo on this phone', e); }
   refreshRoll();
   showReview(p);
@@ -177,13 +195,9 @@ function showReview(p) {
 }
 function closeReview() {
   clearTimeout(reviewTimer); $('review').hidden = true;
+  autoSave(reviewBlob);
   if (state === 'review') go('cooldown');
 }
-function pauseReviewTimer() {
-  clearTimeout(reviewTimer); const bar = $('reviewTimer').firstElementChild;
-  bar.style.transition = 'none'; bar.style.transform = 'scaleX(0)';
-}
-
 // ---------- main loop ----------
 function loop(now) {
   const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now; stateT += dt;
@@ -242,10 +256,6 @@ $('flipBtn').addEventListener('click', async () => {
   try { await openCamera(); } catch (e) { facing = facing === 'user' ? 'environment' : 'user'; await openCamera().catch(() => {}); }
 });
 $('nextGuest').addEventListener('click', closeReview);
-$('saveOne').addEventListener('click', async () => {
-  pauseReviewTimer();
-  if (reviewBlob) { const r = await savePhotos([reviewBlob]); $('saveOne').textContent = r === 'cancelled' ? 'Save to phone' : 'Saved'; setTimeout(() => { $('saveOne').textContent = 'Save to phone'; }, 2500); }
-});
 
 // photo roll
 let rollItems = [], picked = new Set();
@@ -276,7 +286,7 @@ $('closeRoll').addEventListener('click', () => { $('roll').hidden = true; go('co
 $('saveSel').addEventListener('click', async () => {
   const list = picked.size ? rollItems.filter(p => picked.has(p.id)) : rollItems;
   const r = await savePhotos(list);
-  $('rollNote').textContent = r === 'cancelled' ? 'Nothing saved.' : `Sent ${list.length} photo${list.length === 1 ? '' : 's'} to the phone. Check the photo library or Downloads.`;
+  $('rollNote').textContent = r === 'cancelled' ? 'Nothing saved.' : `Sent ${list.length} photo${list.length === 1 ? '' : 's'} (each with its original). Check the photo library or Downloads.`;
 });
 $('clearAll').addEventListener('click', async () => {
   const b = $('clearAll');
