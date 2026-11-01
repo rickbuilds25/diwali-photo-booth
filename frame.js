@@ -3,12 +3,12 @@
   DiwaliFrame.ready()                         -> loads fonts, builds the overlay (await once)
   DiwaliFrame.compose(src, sw, sh, mirror)    -> 1080x1350 canvas with the photo framed
   DiwaliFrame.overlay                         -> the frame with a transparent photo window (for live preview)
-  DiwaliFrame.PHOTO                           -> {x, y, w, h} of the photo window
+  DiwaliFrame.PHOTO                           -> {x, y, w, h} of the photo area (full canvas)
 */
 (function () {
   'use strict';
   const W = 1080, H = 1350;
-  const PHOTO = { x: 60, y: 150, w: 960, h: 980, r: 22 };
+  const PHOTO = { x: 0, y: 0, w: W, h: H, r: 0 };
   const STAMP_1 = "Arindam, Pawnita & Rian's";
   const STAMP_2 = 'DIWALI PARTY 2026';
   const TOPLINE = 'शुभ दीपावली';
@@ -70,69 +70,49 @@
     x.restore();
   }
 
+  // Minimal overlay: the photo runs edge to edge; the frame adds only a slim marigold toran,
+  // a fine gold inset line and a small stamp over a soft shadow at the bottom.
   function buildOverlay() {
     const c = mk(W, H), x = c.getContext('2d');
-    // ground: deep maroon velvet with a warm centre
-    const bg = x.createRadialGradient(W / 2, H * 0.55, 80, W / 2, H * 0.5, H * 0.78);
-    bg.addColorStop(0, '#6b1220'); bg.addColorStop(0.55, '#3d0812'); bg.addColorStop(1, '#1c0308');
-    x.fillStyle = bg; x.fillRect(0, 0, W, H);
-    // faint dotted lattice
-    const r = rng(11); x.fillStyle = 'rgba(255,200,120,0.07)';
-    for (let yy = 12; yy < H; yy += 26) for (let xx = (yy / 26 % 2) * 13 + 6; xx < W; xx += 26) { x.beginPath(); x.arc(xx, yy, 1.6, 0, TAU); x.fill(); }
-    // photo window
-    x.save(); x.globalCompositeOperation = 'destination-out'; x.fillStyle = '#000'; rrect(x, PHOTO.x, PHOTO.y, PHOTO.w, PHOTO.h, PHOTO.r); x.fill(); x.restore();
-    // window border: thin dark line, wide gold line, fine inner gold line
-    x.lineJoin = 'round';
-    rrect(x, PHOTO.x - 5, PHOTO.y - 5, PHOTO.w + 10, PHOTO.h + 10, PHOTO.r + 5); x.strokeStyle = gold(x, PHOTO.y, PHOTO.y + PHOTO.h); x.lineWidth = 7; x.stroke();
-    rrect(x, PHOTO.x - 17, PHOTO.y - 17, PHOTO.w + 34, PHOTO.h + 34, PHOTO.r + 15); x.strokeStyle = 'rgba(246,196,83,0.65)'; x.lineWidth = 2; x.stroke();
-    // inner vignette at the photo edges so the frame sits on top
-    x.save(); rrect(x, PHOTO.x, PHOTO.y, PHOTO.w, PHOTO.h, PHOTO.r); x.clip();
-    const v = x.createLinearGradient(0, PHOTO.y, 0, PHOTO.y + 120); v.addColorStop(0, 'rgba(30,4,8,0.55)'); v.addColorStop(1, 'rgba(30,4,8,0)');
-    x.fillStyle = v; x.fillRect(PHOTO.x, PHOTO.y, PHOTO.w, 120);
-    const v2 = x.createLinearGradient(0, PHOTO.y + PHOTO.h - 110, 0, PHOTO.y + PHOTO.h); v2.addColorStop(0, 'rgba(30,4,8,0)'); v2.addColorStop(1, 'rgba(30,4,8,0.5)');
-    x.fillStyle = v2; x.fillRect(PHOTO.x, PHOTO.y + PHOTO.h - 110, PHOTO.w, 110);
-    x.restore();
+    const r = rng(11);
+    // soft shade at the top so the garland reads, and at the bottom for the stamp
+    const top = x.createLinearGradient(0, 0, 0, 170); top.addColorStop(0, 'rgba(20,4,6,0.38)'); top.addColorStop(1, 'rgba(20,4,6,0)');
+    x.fillStyle = top; x.fillRect(0, 0, W, 170);
+    const bot = x.createLinearGradient(0, H - 330, 0, H); bot.addColorStop(0, 'rgba(20,4,6,0)'); bot.addColorStop(0.55, 'rgba(20,4,6,0.42)'); bot.addColorStop(1, 'rgba(20,4,6,0.78)');
+    x.fillStyle = bot; x.fillRect(0, H - 330, W, 330);
 
-    // top line in Devanagari
+    // fine gold inset line with small diamonds at the corners
+    const I = 30;
+    x.strokeStyle = 'rgba(246,196,83,0.7)'; x.lineWidth = 1.6; x.strokeRect(I, I, W - 2 * I, H - 2 * I);
+    x.fillStyle = '#f6c453';
+    for (const [cx, cy] of [[I, I], [W - I, I], [I, H - I], [W - I, H - I]]) { x.beginPath(); x.moveTo(cx, cy - 7); x.lineTo(cx + 7, cy); x.lineTo(cx, cy + 7); x.lineTo(cx - 7, cy); x.closePath(); x.fill(); }
+
+    // toran: one marigold swag across the top, short strands at the ends, mango leaves at the knots
+    const AY = 18, SAG = 46, n = 34;
+    const swagY = px => { const u = (px + 10) / (W + 20); return AY + SAG * 4 * u * (1 - u); };
+    for (const lx of [W / 2 - 300, W / 2 - 150, W / 2 + 150, W / 2 + 300]) for (const a of [-0.55, 0.55]) leaf(x, lx, swagY(lx) - 4, 40, a);
+    for (const a of [-0.5, 0, 0.5]) leaf(x, W / 2, swagY(W / 2) - 4, 46, a);
+    for (let i = 0; i <= n; i++) { const u = i / n; marigold(x, -10 + (W + 20) * u, AY + SAG * 4 * u * (1 - u), 12.5, r() * TAU); }
+    for (const sx of [14, W - 14]) {
+      for (let j = 1; j <= 4; j++) marigold(x, sx, AY + j * 23, j === 4 ? 14 : 11.5, r() * TAU);
+      x.fillStyle = '#f6c453'; x.beginPath(); x.moveTo(sx, AY + 4 * 23 + 13); x.lineTo(sx - 5, AY + 4 * 23 + 32); x.lineTo(sx + 5, AY + 4 * 23 + 32); x.closePath(); x.fill();
+    }
+    marigold(x, W / 2, AY + SAG, 15, 0.4);
+
+    // stamp: a small diya, the names in italic, the occasion in small caps
     x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.font = `44px ${DISPLAY}`; x.fillStyle = gold(x, 22, 72);
-    x.shadowColor = 'rgba(255,150,40,0.6)'; x.shadowBlur = 14; x.fillText(TOPLINE, W / 2, 44); x.shadowBlur = 0;
-
-    // garland: four swags with mango leaves at each knot, strands down both sides
-    const anchors = [26, 290, 540, 790, 1054], AY = 104, SAG = 58;
-    for (let s = 0; s < 4; s++) {
-      const n = 11;
-      for (let i = 0; i <= n; i++) {
-        const u = i / n, gx = anchors[s] + (anchors[s + 1] - anchors[s]) * u, gy = AY + SAG * 4 * u * (1 - u);
-        marigold(x, gx, gy, 17, r() * TAU);
-      }
-    }
-    for (const sx of [26, 1054]) for (let j = 1; j <= 9; j++) marigold(x, sx, AY + j * 33, j === 9 ? 19 : 15, r() * TAU);
-    for (const sx of [26, 1054]) { x.fillStyle = '#ffcf6a'; x.beginPath(); x.moveTo(sx, AY + 9 * 33 + 18); x.lineTo(sx - 7, AY + 9 * 33 + 44); x.lineTo(sx + 7, AY + 9 * 33 + 44); x.closePath(); x.fill(); }
-    for (const ax of anchors) { for (const a of [-0.55, 0, 0.55]) leaf(x, ax, AY - 4, 46, a); marigold(x, ax, AY, 21, r() * TAU); }
-
-    // sparkles near the photo corners
-    for (let i = 0; i < 26; i++) {
-      const side = i % 2, cx = side ? PHOTO.x + PHOTO.w - r() * 160 : PHOTO.x + r() * 160, cy = PHOTO.y + PHOTO.h - 20 - r() * 260;
-      sparkle(x, cx, cy, 3 + r() * 9, 0.35 + r() * 0.5);
-    }
-
-    // bottom band: rangoli corners, diyas, stamp
-    const BY = PHOTO.y + PHOTO.h + 18;
-    rangoliCorner(x, 40, H - 30, 1.1, false); rangoliCorner(x, W - 40, H - 30, 1.1, true);
-    diya(x, 150, H - 70, 1.25); diya(x, W - 150, H - 70, 1.25);
-    const cyA = BY + 62, cyB = BY + 150;
-    let fs = 64; x.font = `italic 600 ${fs}px ${SERIF}`;
-    while (x.measureText(STAMP_1).width > 600 && fs > 40) { fs -= 2; x.font = `italic 600 ${fs}px ${SERIF}`; }   // fit between the diyas
-    x.fillStyle = gold(x, cyA - 34, cyA + 30);
-    x.shadowColor = 'rgba(255,150,40,0.55)'; x.shadowBlur = 16; x.fillText(STAMP_1, W / 2, cyA); x.shadowBlur = 0;
-    x.font = `38px ${DISPLAY}`; if ('letterSpacing' in x) x.letterSpacing = '7px';
-    x.fillStyle = gold(x, cyB - 20, cyB + 20); x.fillText(STAMP_2, W / 2, cyB);
+    diya(x, W / 2, H - 176, 0.52);
+    let fs = 46; x.font = `italic 600 ${fs}px ${SERIF}`;
+    while (x.measureText(STAMP_1).width > 760 && fs > 30) { fs -= 2; x.font = `italic 600 ${fs}px ${SERIF}`; }
+    x.shadowColor = 'rgba(0,0,0,0.55)'; x.shadowBlur = 10; x.shadowOffsetY = 2;
+    x.fillStyle = '#ffe6ad'; x.fillText(STAMP_1, W / 2, H - 116);
+    x.font = `21px ${DISPLAY}`; if ('letterSpacing' in x) x.letterSpacing = '6px';
+    x.fillStyle = '#f6c453'; x.fillText(`${STAMP_2}`, W / 2, H - 70);
     if ('letterSpacing' in x) x.letterSpacing = '0px';
-    // divider: a line of dots with a diamond in the middle
-    const dy = (cyA + cyB) / 2 + 6; x.fillStyle = '#f6c453';
-    for (let i = -9; i <= 9; i++) { if (!i) continue; const rr = 2.4 - Math.abs(i) * 0.12; x.globalAlpha = 1 - Math.abs(i) * 0.08; x.beginPath(); x.arc(W / 2 + i * 16, dy, rr, 0, TAU); x.fill(); }
-    x.globalAlpha = 1; x.beginPath(); x.moveTo(W / 2, dy - 8); x.lineTo(W / 2 + 8, dy); x.lineTo(W / 2, dy + 8); x.lineTo(W / 2 - 8, dy); x.closePath(); x.fill();
+    x.shadowColor = 'transparent';
+    // hairlines either side of the occasion line
+    x.strokeStyle = 'rgba(246,196,83,0.6)'; x.lineWidth = 1.2;
+    x.beginPath(); x.moveTo(W / 2 - 300, H - 70); x.lineTo(W / 2 - 185, H - 70); x.moveTo(W / 2 + 185, H - 70); x.lineTo(W / 2 + 300, H - 70); x.stroke();
     return c;
   }
 
