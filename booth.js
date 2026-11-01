@@ -84,7 +84,7 @@ async function refreshRoll() {
   try { list = await allPhotos(); } catch (e) { /* storage blocked: roll stays empty */ }
   const left = list.filter(p => !p.exported && !(AUTOSAVE && p.saved)).length;
   const waiting = list.filter(p => p.toUpload && !p.uploaded).length;
-  $('rollCount').textContent = (list.length === 1 ? '1 photo' : `${list.length} photos`) + (!AUTOSAVE && left ? ` · ${left} to save` : '') + (waiting ? ` · ${waiting} uploading` : '');
+  $('rollCount').textContent = (list.length === 1 ? '1 photo' : `${list.length} photos`) + (!AUTOSAVE && left ? ` · ${left} to save` : '') + (waiting ? (upError ? ` · ${waiting} not uploaded` : ` · ${waiting} uploading`) : '');
   const thumb = $('rollThumb');
   if (thumb.dataset.url) URL.revokeObjectURL(thumb.dataset.url);
   if (list[0]) { const u = URL.createObjectURL(list[0].blob); thumb.src = u; thumb.dataset.url = u; } else { thumb.removeAttribute('src'); thumb.dataset.url = ''; }
@@ -137,13 +137,22 @@ const GALLERY_URL = store.get('gallery-url') || (window.BOOTH_CONFIG && BOOTH_CO
 const GALLERY_KEY = store.get('gallery-key') || '';
 const GALLERY_ON = !!(GALLERY_URL && GALLERY_KEY);
 let liveUpload = store.get('live-upload') === '1';
-let upBusy = false, upFails = 0, upTimer = 0;
+let upBusy = false, upFails = 0, upTimer = 0, upError = '';
 // small copy for the gallery grid, so guests' phones load the wall quickly
 async function thumbOf(blob) {
   const bmp = await createImageBitmap(blob), k = 480 / bmp.width;
   const c = document.createElement('canvas'); c.width = 480; c.height = Math.round(bmp.height * k);
   c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+}
+async function postScript(obj) {
+  let r;
+  try { r = await fetch(GALLERY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(obj) }); }
+  catch (e) { throw new Error(navigator.onLine === false ? 'no internet connection' : 'the script could not be reached (' + (e.message || 'network error') + ')'); }
+  const text = await r.text();
+  let j; try { j = JSON.parse(text); } catch (e) { throw new Error('the script answered with a web page instead of data (HTTP ' + r.status + '): check it is deployed with access "Anyone"'); }
+  if (!j.ok) throw new Error(j.error === 'bad_key' ? 'the upload key on this device does not match the script' : 'the script said: ' + (j.error || 'unknown error'));
+  return j;
 }
 function blobToBase64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(b); }); }
 async function queueUpload(items) {
@@ -160,17 +169,16 @@ async function pumpUploads() {
     for (const p of list) {
       if (state === 'countdown' || state === 'capturing') break;          // never slow down a capture
       const body = JSON.stringify({ key: GALLERY_KEY, name: fname(p.ts), data: await blobToBase64(p.blob), thumb: await blobToBase64(await thumbOf(p.blob)) });
-      const r = await fetch(GALLERY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
-      const j = await r.json();
-      if (!j.ok) throw new Error(j.error || 'upload failed');
+      const j = await postScript(JSON.parse(body));
       p.uploaded = true; p.toUpload = false; p.driveId = j.id;
       try { await putPhoto(p); } catch (e) {}
       const shown = rollItems.find(x => x.id === p.id); if (shown) { shown.uploaded = true; shown.toUpload = false; shown.driveId = j.id; }
       if (!$('roll').hidden) updRollBtns();
-      upFails = 0; refreshRoll(); if (!$('roll').hidden) markTiles();
+      upFails = 0; upError = ''; refreshRoll(); if (!$('roll').hidden) markTiles();
     }
   } catch (e) {
-    upFails++; console.warn('Guest gallery upload failed; will retry', e);
+    upFails++; upError = e.message || String(e); console.warn('Guest gallery upload failed; will retry', e);
+    refreshRoll(); if (!$('roll').hidden) $('rollNote').textContent = 'Upload to the guest gallery is not working: ' + upError + '. The booth keeps retrying.';
   } finally {
     upBusy = false;
     // keep trying in the background: quickly at first, then every minute
@@ -359,7 +367,7 @@ async function openRoll() {
     grid.appendChild(b);
   }
   $('clearAll').textContent = 'Delete all'; $('clearAll').dataset.armed = '';
-  if (!storageOK) $('rollNote').textContent = STORAGE_WARNING; else $('rollNote').textContent = IOS
+  if (!storageOK) $('rollNote').textContent = STORAGE_WARNING; else if (upError && GALLERY_ON) $('rollNote').textContent = 'Upload to the guest gallery is not working: ' + upError + '. The booth keeps retrying.'; else $('rollNote').textContent = IOS
     ? 'Photos are kept on this iPad. Tap the gold button, then choose "Save Images" to put them in Photos. A tick marks the ones already saved.'
     : 'Every photo has already gone to Downloads. You can save them again from here.';
   markTiles(); updRollBtns(); $('roll').hidden = false;
@@ -412,7 +420,10 @@ document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Ente
 
 if (DEBUG) $('debug').hidden = false;
 probeStorage().then(ok => { if (!ok) { $('startErr').textContent = STORAGE_WARNING; $('startErr').hidden = false; } });
-$('galleryState').textContent = GALLERY_ON ? 'Guest gallery: connected. Saved photos are sent to it.' : 'Guest gallery: not set up on this device yet.';
+$('galleryState').textContent = GALLERY_ON ? 'Guest gallery: checking the connection…' : 'Guest gallery: not set up on this device yet.';
+if (GALLERY_ON) postScript({ key: GALLERY_KEY, ping: true })
+  .then(() => { $('galleryState').textContent = 'Guest gallery: connected and working. Saved photos are sent to it.'; })
+  .catch(e => { $('galleryState').textContent = 'Guest gallery problem: ' + e.message + '.'; $('galleryState').style.color = '#ffb4a8'; });
 $('liveUpload').checked = liveUpload; $('liveUpload').disabled = !GALLERY_ON;
 $('liveUpload').addEventListener('change', e => { liveUpload = e.target.checked; store.set('live-upload', liveUpload ? '1' : '0'); });
 pumpUploads();
