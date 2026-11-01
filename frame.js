@@ -21,23 +21,73 @@
   function rrect(x, X, Y, w, h, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + w, Y, X + w, Y + h, r); x.arcTo(X + w, Y + h, X, Y + h, r); x.arcTo(X, Y + h, X, Y, r); x.arcTo(X, Y, X + w, Y, r); x.closePath(); }
   function gold(x, y0, y1) { const g = x.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, '#fff1c2'); g.addColorStop(0.45, '#f6c453'); g.addColorStop(1, '#c9821e'); return g; }
 
-  function marigold(x, cx, cy, R, rot) {
-    x.save(); x.translate(cx, cy); x.rotate(rot);
-    x.shadowColor = 'rgba(0,0,0,0.35)'; x.shadowBlur = 6; x.shadowOffsetY = 3;
-    x.fillStyle = '#c94f06'; x.beginPath(); x.arc(0, 0, R, 0, TAU); x.fill();
-    x.shadowColor = 'transparent';
-    const rings = [['#e3650b', 1.0, 15], ['#f5871a', 0.74, 12], ['#ffa62b', 0.5, 9], ['#ffc247', 0.28, 6]];
-    for (const [col, k, n] of rings) {
-      x.fillStyle = col;
-      for (let i = 0; i < n; i++) { const a = i / n * TAU + k * 2; x.beginPath(); x.ellipse(Math.cos(a) * R * k * 0.62, Math.sin(a) * R * k * 0.62, R * k * 0.42, R * k * 0.3, a, 0, TAU); x.fill(); }
+  // ---- marigolds (genda phool): pre-rendered ruffled pom-poms, shaded like a ball ----
+  const MG_SIZE = 128, MG = [];
+  const MG_PALETTES = [
+    { base: '#a8380a', mid: '#e8620c', tip: '#ff9a2e', edge: '#7a2604' },   // deep orange
+    { base: '#b8420a', mid: '#f2760f', tip: '#ffae3d', edge: '#83300a' },   // orange
+    { base: '#c46a08', mid: '#f7a21b', tip: '#ffd25a', edge: '#8f4c06' },   // yellow-orange
+    { base: '#c98a0a', mid: '#fbc02a', tip: '#ffe27a', edge: '#946108' },   // yellow
+  ];
+  function makeMarigold(pal, seed) {
+    const c = mk(MG_SIZE, MG_SIZE), x = c.getContext('2d'), R = MG_SIZE * 0.4, rr = rng(seed);
+    x.translate(MG_SIZE / 2, MG_SIZE / 2);
+    // soft contact shadow
+    const sh = x.createRadialGradient(R * 0.08, R * 0.16, R * 0.5, R * 0.08, R * 0.16, R * 1.12);
+    sh.addColorStop(0, 'rgba(0,0,0,0.45)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = sh; x.beginPath(); x.arc(R * 0.08, R * 0.16, R * 1.12, 0, TAU); x.fill();
+    x.fillStyle = pal.edge; x.beginPath(); x.arc(0, 0, R * 0.98, 0, TAU); x.fill();
+    // petals: many crinkled fans, outer ones first so the centre ones sit on top
+    const petals = [];
+    for (let i = 0; i < 190; i++) { const d = Math.pow(rr(), 0.75) * R * 0.86; petals.push({ d, a: rr() * TAU, len: R * (0.3 + rr() * 0.16) * (1 - d / R * 0.35), w: 0.5 + rr() * 0.35, tw: (rr() - 0.5) * 0.6 }); }
+    petals.sort((p, q) => q.d - p.d);
+    for (const p of petals) {
+      x.save(); x.translate(Math.cos(p.a) * p.d, Math.sin(p.a) * p.d); x.rotate(p.a + p.tw);
+      const L = p.len, Wd = L * p.w, teeth = 5;
+      x.beginPath(); x.moveTo(-L * 0.25, -Wd * 0.25);
+      for (let k = 0; k <= teeth; k++) { const t = k / teeth, ang = -0.9 + t * 1.8, rad = L * (0.92 + (k % 2 ? 0.1 : -0.04)); x.lineTo(Math.cos(ang) * rad * 0.9, Math.sin(ang) * Wd * 1.1 * (0.6 + 0.4 * Math.cos(ang))); }
+      x.lineTo(-L * 0.25, Wd * 0.25); x.closePath();
+      const g = x.createLinearGradient(-L * 0.25, 0, L, 0);
+      const inner = p.d / R;
+      g.addColorStop(0, pal.base); g.addColorStop(0.45, pal.mid); g.addColorStop(1, inner < 0.35 ? pal.mid : pal.tip);
+      x.fillStyle = g; x.fill();
+      x.strokeStyle = 'rgba(90,25,0,0.35)'; x.lineWidth = 0.7; x.stroke();
+      x.restore();
     }
-    x.restore();
+    // ball shading: light from the top left, shade at the bottom right
+    x.globalCompositeOperation = 'source-atop';
+    const hl = x.createRadialGradient(-R * 0.38, -R * 0.42, 0, -R * 0.2, -R * 0.25, R * 1.1);
+    hl.addColorStop(0, 'rgba(255,245,210,0.38)'); hl.addColorStop(0.45, 'rgba(255,230,170,0.06)'); hl.addColorStop(1, 'rgba(70,15,0,0.5)');
+    x.fillStyle = hl; x.fillRect(-MG_SIZE / 2, -MG_SIZE / 2, MG_SIZE, MG_SIZE);
+    return c;
   }
+  function marigoldSprites() {
+    if (MG.length) return;
+    let seed = 101;
+    for (const pal of MG_PALETTES) for (let v = 0; v < 3; v++) MG.push(makeMarigold(pal, seed++));
+  }
+  const mgPick = rng(77);
+  function marigold(x, cx, cy, R, rot) {
+    marigoldSprites();
+    // mostly orange, some yellow, the way real torans are strung
+    const u = mgPick(), pal = u < 0.3 ? 0 : u < 0.68 ? 1 : u < 0.86 ? 2 : 3;
+    const spr = MG[pal * 3 + ((mgPick() * 3) | 0)], s = R / (MG_SIZE * 0.4) * 1.08;
+    x.save(); x.translate(cx, cy); x.rotate(rot); x.drawImage(spr, -MG_SIZE / 2 * s, -MG_SIZE / 2 * s, MG_SIZE * s, MG_SIZE * s); x.restore();
+  }
+  // mango leaf: long and pointed, darker along one side, with a pale midrib and faint veins
   function leaf(x, cx, cy, len, ang) {
     x.save(); x.translate(cx, cy); x.rotate(ang);
-    const g = x.createLinearGradient(-len * 0.25, 0, len * 0.25, 0); g.addColorStop(0, '#2f7d2c'); g.addColorStop(1, '#58b047');
-    x.fillStyle = g; x.beginPath(); x.moveTo(0, 0); x.quadraticCurveTo(len * 0.32, len * 0.45, 0, len); x.quadraticCurveTo(-len * 0.32, len * 0.45, 0, 0); x.fill();
-    x.strokeStyle = 'rgba(200,240,170,0.7)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(0, 2); x.lineTo(0, len - 4); x.stroke();
+    const w = len * 0.2, bend = len * 0.06;
+    const path = () => { x.beginPath(); x.moveTo(0, 0); x.bezierCurveTo(w * 1.3, len * 0.22, w * 1.1 + bend, len * 0.7, bend, len); x.bezierCurveTo(-w * 0.9 + bend, len * 0.7, -w * 1.25, len * 0.22, 0, 0); };
+    x.shadowColor = 'rgba(0,0,0,0.35)'; x.shadowBlur = 5; x.shadowOffsetY = 2;
+    const g = x.createLinearGradient(-w, 0, w, 0); g.addColorStop(0, '#1f5e22'); g.addColorStop(0.5, '#2f7d2c'); g.addColorStop(1, '#4f9a3e');
+    path(); x.fillStyle = g; x.fill(); x.shadowColor = 'transparent';
+    const sheen = x.createLinearGradient(0, 0, 0, len); sheen.addColorStop(0, 'rgba(220,255,190,0.18)'); sheen.addColorStop(1, 'rgba(220,255,190,0)');
+    path(); x.fillStyle = sheen; x.fill();
+    x.strokeStyle = 'rgba(214,240,180,0.75)'; x.lineWidth = 1.3;
+    x.beginPath(); x.moveTo(0, 2); x.quadraticCurveTo(bend * 0.4 + w * 0.1, len * 0.5, bend, len - 3); x.stroke();
+    x.strokeStyle = 'rgba(200,235,170,0.3)'; x.lineWidth = 0.8;
+    for (let k = 1; k <= 5; k++) { const t = k / 6, mx = bend * t * t, my = len * t; for (const sd of [-1, 1]) { x.beginPath(); x.moveTo(mx, my); x.lineTo(mx + sd * w * 0.85 * Math.sin(Math.PI * t), my + len * 0.08); x.stroke(); } }
     x.restore();
   }
   function diya(x, cx, cy, s) {
@@ -89,6 +139,10 @@
 
     // toran: the original four-swag marigold garland, with strands down both sides and mango leaves at each knot
     const anchors = [26, 290, 540, 790, 1054], AY = 40, SAG = 58;
+    x.strokeStyle = 'rgba(240,225,190,0.55)'; x.lineWidth = 1.5; x.beginPath();
+    for (let s2 = 0; s2 < 4; s2++) for (let i = 0; i <= 40; i++) { const u = i / 40, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u); if (!s2 && !i) x.moveTo(gx, gy); else x.lineTo(gx, gy); }
+    for (const sx of [26, 1054]) { x.moveTo(sx, AY); x.lineTo(sx, AY + 9 * 33 + 20); }
+    x.stroke();
     for (let s2 = 0; s2 < 4; s2++) {
       const n = 11;
       for (let i = 0; i <= n; i++) {
