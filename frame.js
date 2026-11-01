@@ -139,9 +139,16 @@
 
     // toran: the original four-swag marigold garland, with strands down both sides and mango leaves at each knot
     const anchors = [26, 290, 540, 790, 1054], AY = 40, SAG = 58;
+    // ladiya: the hanging strands at both ends, each with two small diyas strung in
+    const LAD = []; { let y = AY;
+      for (let j = 0; j < 7; j++) { y += 31; LAD.push({ k: 'f', y }); }
+      y += 48; LAD.push({ k: 'd', y }); y += 24;
+      for (let j = 0; j < 6; j++) { y += 31; LAD.push({ k: 'f', y }); }
+      y += 48; LAD.push({ k: 'd', y }); }
+    const LAD_END = LAD[LAD.length - 1].y;
     x.strokeStyle = 'rgba(240,225,190,0.55)'; x.lineWidth = 1.5; x.beginPath();
     for (let s2 = 0; s2 < 4; s2++) for (let i = 0; i <= 40; i++) { const u = i / 40, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u); if (!s2 && !i) x.moveTo(gx, gy); else x.lineTo(gx, gy); }
-    for (const sx of [26, 1054]) { x.moveTo(sx, AY); x.lineTo(sx, AY + 9 * 33 + 20); }
+    for (const sx of [26, 1054]) { x.moveTo(sx, AY); x.lineTo(sx, LAD_END - 8); }
     x.stroke();
     for (let s2 = 0; s2 < 4; s2++) {
       const n = 11;
@@ -150,8 +157,20 @@
         marigold(x, gx, gy, 17, r() * TAU);
       }
     }
-    for (const sx of [26, 1054]) for (let j = 1; j <= 9; j++) marigold(x, sx, AY + j * 33, j === 9 ? 19 : 15, r() * TAU);
-    for (const sx of [26, 1054]) { x.fillStyle = '#ffcf6a'; x.beginPath(); x.moveTo(sx, AY + 9 * 33 + 18); x.lineTo(sx - 7, AY + 9 * 33 + 44); x.lineTo(sx + 7, AY + 9 * 33 + 44); x.closePath(); x.fill(); }
+    for (const sx of [26, 1054]) {
+      for (const it of LAD) {
+        if (it.k === 'f') marigold(x, sx, it.y, 15, r() * TAU);
+        else { // a small diya hanging on the strand: the thread ties to its rim
+          x.strokeStyle = 'rgba(240,225,190,0.7)'; x.lineWidth = 1.2;
+          x.beginPath(); x.moveTo(sx, it.y - 38); x.lineTo(sx - 17, it.y - 4); x.moveTo(sx, it.y - 38); x.lineTo(sx + 17, it.y - 4); x.stroke();
+          diya(x, sx, it.y, 0.5);
+        }
+      }
+      // gold tassel under the last diya
+      const ty = LAD_END + 12; x.fillStyle = '#ffcf6a';
+      x.beginPath(); x.arc(sx, ty, 4, 0, TAU); x.fill();
+      x.beginPath(); x.moveTo(sx, ty + 2); x.lineTo(sx - 7, ty + 30); x.lineTo(sx + 7, ty + 30); x.closePath(); x.fill();
+    }
     for (const ax of anchors) { for (const a of [-0.55, 0, 0.55]) leaf(x, ax, AY - 4, 46, a); marigold(x, ax, AY, 21, r() * TAU); }
 
     // stamp: a small diya, the names in italic, the occasion in small caps
