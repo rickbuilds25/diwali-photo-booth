@@ -8,6 +8,11 @@ const HOLD = clampNum(+Q.get('hold'), 0.2, 3, 0.7);
 const COUNT = Math.round(clampNum(+Q.get('count'), 1, 10, 3));
 const REVIEW_S = clampNum(+Q.get('preview'), 2, 60, 10), COOLDOWN_S = 2.5;
 const DEBUG = Q.has('debug');
+// iPhone and iPad browsers (Safari and Chrome alike) ask before every download, so there the booth
+// keeps photos on the device and they are saved to Photos in batches from the Photos screen.
+const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const AUTOSAVE = Q.get('autosave') === 'on' ? true : Q.get('autosave') === 'off' ? false : !IOS;
+const BATCH = 20;
 function clampNum(v, a, b, d) { return Number.isFinite(v) && v > 0 ? Math.min(b, Math.max(a, v)) : d; }
 
 const $ = id => document.getElementById(id);
@@ -58,7 +63,8 @@ let rollUrls = [];
 async function refreshRoll() {
   let list = [];
   try { list = await allPhotos(); } catch (e) { /* storage blocked: roll stays empty */ }
-  $('rollCount').textContent = list.length === 1 ? '1 photo' : `${list.length} photos`;
+  const left = list.filter(p => !p.exported && !(AUTOSAVE && p.saved)).length;
+  $('rollCount').textContent = (list.length === 1 ? '1 photo' : `${list.length} photos`) + (!AUTOSAVE && left ? ` · ${left} to save` : '');
   const thumb = $('rollThumb');
   if (thumb.dataset.url) URL.revokeObjectURL(thumb.dataset.url);
   if (list[0]) { const u = URL.createObjectURL(list[0].blob); thumb.src = u; thumb.dataset.url = u; } else { thumb.removeAttribute('src'); thumb.dataset.url = ''; }
@@ -74,7 +80,7 @@ function downloadFile(blob, name) {
 }
 // Each photo saves itself when its preview ends: the framed copy, then the original without the frame.
 async function autoSave(p) {
-  if (!p || p.saved) return;
+  if (!p || p.saved || !AUTOSAVE) return;
   p.saved = true;
   downloadFile(p.blob, fname(p.ts));
   if (p.raw) { await new Promise(r => setTimeout(r, 400)); downloadFile(p.raw, rawName(p.ts)); }
@@ -86,17 +92,19 @@ async function savePhotos(items) {
   // Phones and tablets get the share sheet ("Save Image" puts it in Photos);
   // laptops and desktops save straight to the Downloads folder.
   const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
-  if (touch && navigator.canShare && navigator.canShare({ files })) {
-    try { await navigator.share({ files, title: 'Diwali Party 2026' }); return 'shared'; }
-    catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; }
+  if ((touch || IOS) && navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files, title: 'Diwali Party 2026' }); await markExported(items); return 'shared'; }
+    catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; if (IOS) return 'failed'; }
   }
   for (const f of files) {           // fallback: ordinary downloads
     const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     await new Promise(r => setTimeout(r, 350));
   }
+  await markExported(items);
   return 'downloaded';
 }
+async function markExported(items) { for (const p of items) { p.exported = true; try { await putPhoto(p); } catch (e) { /* only a convenience */ } } }
 
 // ---------- camera ----------
 async function openCamera() {
@@ -236,6 +244,7 @@ $('startBtn').addEventListener('click', async () => {
   try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; }
   try { await document.documentElement.requestFullscreen?.(); } catch (e) { /* phones without full screen */ }
   keepAwake();
+  try { await navigator.storage?.persist?.(); } catch (e) { /* not supported */ }
   try { await openCamera(); }
   catch (e) {
     btn.disabled = false; btn.textContent = 'Try again';
@@ -275,19 +284,39 @@ async function openRoll() {
     grid.appendChild(b);
   }
   $('clearAll').textContent = 'Delete all'; $('clearAll').dataset.armed = '';
-  updRollBtns(); $('roll').hidden = false;
+  $('rollNote').textContent = IOS
+    ? 'Photos are kept on this iPad. Tap the gold button, then choose "Save Images" to put them in Photos. A tick marks the ones already saved.'
+    : 'Every photo has already gone to Downloads. You can save them again from here.';
+  markTiles(); updRollBtns(); $('roll').hidden = false;
 }
+const unsavedItems = () => rollItems.filter(p => !p.exported);
 function updRollBtns() {
-  $('saveSel').textContent = picked.size ? `Save ${picked.size} picked` : `Save all (${rollItems.length})`;
-  $('saveSel').disabled = !rollItems.length; $('clearAll').disabled = !rollItems.length;
+  if (IOS) {
+    const left = unsavedItems();
+    $('saveSel').textContent = picked.size ? `Save ${Math.min(picked.size, BATCH)} picked to Photos`
+      : left.length ? `Save ${Math.min(left.length, BATCH)} to Photos${left.length > BATCH ? ` (${left.length} left)` : ''}` : 'All saved to Photos';
+    $('saveSel').disabled = !picked.size && !left.length;
+  } else {
+    $('saveSel').textContent = picked.size ? `Save ${picked.size} picked` : `Save all (${rollItems.length})`;
+    $('saveSel').disabled = !rollItems.length;
+  }
+  $('clearAll').disabled = !rollItems.length;
 }
 $('rollBtn').addEventListener('click', openRoll);
 $('closeRoll').addEventListener('click', () => { $('roll').hidden = true; go('cooldown'); });
 $('saveSel').addEventListener('click', async () => {
-  const list = picked.size ? rollItems.filter(p => picked.has(p.id)) : rollItems;
+  let list = picked.size ? rollItems.filter(p => picked.has(p.id)) : (IOS ? unsavedItems() : rollItems);
+  if (IOS) list = list.slice(0, BATCH);       // the share sheet handles a batch of 20 photos (40 files) comfortably
   const r = await savePhotos(list);
-  $('rollNote').textContent = r === 'cancelled' ? 'Nothing saved.' : `Sent ${list.length} photo${list.length === 1 ? '' : 's'} (each with its original). Check the photo library or Downloads.`;
+  const n = `${list.length} photo${list.length === 1 ? '' : 's'}`;
+  $('rollNote').textContent = r === 'cancelled' ? 'Nothing saved. Tap the button again and choose "Save Images".'
+    : r === 'failed' ? 'Saving did not work. Try again with fewer photos picked.'
+    : IOS ? `Saved ${n} with their originals. ${unsavedItems().length ? 'Tap the button again for the next batch.' : 'Everything is in Photos now.'}`
+    : `Saved ${n} with their originals to Downloads.`;
+  picked.clear(); $('rollGrid').querySelectorAll('[aria-pressed="true"]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  markTiles(); updRollBtns(); refreshRoll();
 });
+function markTiles() { [...$('rollGrid').children].forEach((b, i) => { const it = rollItems[i]; if (it) b.classList.toggle('done', !!it.exported); }); }
 $('clearAll').addEventListener('click', async () => {
   const b = $('clearAll');
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to delete every photo'; return; }
@@ -296,6 +325,7 @@ $('clearAll').addEventListener('click', async () => {
 document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { if (!$('start').hidden) return; e.preventDefault(); if (!$('review').hidden) closeReview(); else startCountdown(); } });
 
 if (DEBUG) $('debug').hidden = false;
+if (!AUTOSAVE) $('reviewNote').textContent = 'Kept on this iPad. Save the photos to Photos from the Photos button.';
 await DiwaliFrame.ready();
 refreshRoll();
 if (!navigator.mediaDevices?.getUserMedia) {
