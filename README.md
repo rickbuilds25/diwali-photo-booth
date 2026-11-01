@@ -1,0 +1,1 @@
+# diwali-photo-booth
