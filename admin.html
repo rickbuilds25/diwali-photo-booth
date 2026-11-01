@@ -50,6 +50,18 @@
     background: rgba(22,3,10,0.82); border: 1px solid var(--line); color: var(--ink); }
   .ph button.arm { background: #b3261e; border-color: #ff9a88; color: #fff; }
   .ph.gone { opacity: 0.35; pointer-events: none; }
+  .ph img { cursor: zoom-in; }
+  .lb { position: fixed; inset: 0; z-index: 20; display: grid; grid-template-rows: auto 1fr auto; background: rgba(10,1,4,0.97);
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  .lb .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 14px; font-size: 14px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+  .lb .stage { position: relative; min-height: 0; display: grid; place-items: center; touch-action: pan-y; }
+  .lb .stage img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .lb .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 46px; height: 46px; border-radius: 50%; background: rgba(22,3,10,0.7); border: 1px solid var(--line); font-size: 24px; }
+  .lb .prev { left: 10px; } .lb .next { right: 10px; }
+  .lb .bottom { display: flex; justify-content: center; gap: 10px; padding: 12px 14px 18px; }
+  .lb .del { padding: 12px 22px; border-radius: 999px; font-weight: 700; border: 1px solid var(--line); background: rgba(22,3,10,0.8); }
+  .lb .del.arm { background: #b3261e; border-color: #ff9a88; color: #fff; }
+  .lb .sharp { font-size: 12px; color: var(--ink-dim); }
   .msg { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); color: var(--no); }
 </style>
 </head>
@@ -75,6 +87,15 @@
   <p class="none" id="phNote">Tap Delete, then tap again to confirm. A deleted photo goes to the bin in your Google Drive (kept for 30 days) and disappears from guests' phones within about 20 seconds.</p>
   <div class="pgrid" id="pgrid"></div>
 </main>
+<div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="top"><span id="lbPos"></span><span class="sharp" id="lbSharp"></span><button class="small" id="lbClose" type="button">Close</button></div>
+  <div class="stage" id="lbStage">
+    <img id="lbImg" alt="Gallery photo">
+    <button class="nav prev" id="lbPrev" type="button" aria-label="Previous photo">‹</button>
+    <button class="nav next" id="lbNext" type="button" aria-label="Next photo">›</button>
+  </div>
+  <div class="bottom"><button class="del" id="lbDel" type="button">Delete this photo</button></div>
+</div>
 <script src="config.js"></script>
 <script>
 (() => {
@@ -188,7 +209,8 @@
       let el = have.get(p.id);
       if (!el) {
         el = document.createElement('div'); el.className = 'ph'; el.dataset.id = p.id;
-        const img = document.createElement('img'); img.alt = ''; if (thumbs.get(p.id)) img.src = thumbs.get(p.id);
+        const img = document.createElement('img'); img.alt = 'Open photo'; if (thumbs.get(p.id)) img.src = thumbs.get(p.id);
+        img.addEventListener('click', () => openLb(p.id));
         const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Delete';
         b.addEventListener('click', () => removePhoto(p.id, el, b));
         el.append(img, b);
@@ -214,6 +236,45 @@
       msg(e.message === 'bad_key' ? 'Deleting needs the updated script. Redeploy it as a new version.' : 'That photo was not deleted. Try again.');
     }
   }
+
+  // ---------- full-screen view ----------
+  let lbId = null, lbUrl = '';
+  const fulls = new Map();
+  async function fullOf(id) {
+    if (fulls.has(id)) return fulls.get(id);
+    const j = await adminGet('op=full&id=' + encodeURIComponent(id)); if (!j.ok) throw new Error(j.error);
+    const bin = atob(j.data), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    const u = URL.createObjectURL(new Blob([a], { type: 'image/jpeg' })); fulls.set(id, u); return u;
+  }
+  async function openLb(id) {
+    const i = photoList.findIndex(p => p.id === id); if (i < 0) return;
+    lbId = id; $('lb').hidden = false;
+    $('lbPos').textContent = `${i + 1} of ${photoList.length}`;
+    $('lbPrev').hidden = i === 0; $('lbNext').hidden = i === photoList.length - 1;
+    const del = $('lbDel'); del.classList.remove('arm'); del.textContent = 'Delete this photo'; del.disabled = false;
+    $('lbImg').src = fulls.get(id) || thumbs.get(id) || '';
+    $('lbSharp').textContent = fulls.has(id) ? '' : 'Loading full size…';
+    try { const u = await fullOf(id); if (lbId === id) { $('lbImg').src = u; $('lbSharp').textContent = ''; } }
+    catch (e) { if (lbId === id) $('lbSharp').textContent = 'Preview size'; }
+  }
+  function closeLb() { $('lb').hidden = true; lbId = null; }
+  const step = d => { const i = photoList.findIndex(p => p.id === lbId); if (photoList[i + d]) openLb(photoList[i + d].id); };
+  $('lbClose').addEventListener('click', closeLb);
+  $('lbPrev').addEventListener('click', () => step(-1));
+  $('lbNext').addEventListener('click', () => step(1));
+  let sx = null; $('lbStage').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  $('lbStage').addEventListener('touchend', e => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 60) step(dx < 0 ? 1 : -1); });
+  document.addEventListener('keydown', e => { if ($('lb').hidden) return; if (e.key === 'Escape') closeLb(); if (e.key === 'ArrowRight') step(1); if (e.key === 'ArrowLeft') step(-1); });
+  $('lbDel').addEventListener('click', async () => {
+    const b = $('lbDel'), id = lbId; if (!id) return;
+    if (!b.classList.contains('arm')) { b.classList.add('arm'); b.textContent = 'Tap again to delete'; return; }
+    b.disabled = true; b.textContent = 'Deleting…';
+    const i = photoList.findIndex(p => p.id === id), nextId = (photoList[i + 1] || photoList[i - 1] || {}).id;
+    const el = $('pgrid').querySelector(`[data-id="${CSS.escape(id)}"]`), tb = el && el.querySelector('button');
+    if (el && tb) { tb.classList.add('arm'); await removePhoto(id, el, tb); }
+    if (!photoList.some(p => p.id === id)) { if (nextId) openLb(nextId); else closeLb(); }
+    else { b.disabled = false; b.classList.remove('arm'); b.textContent = 'Delete this photo'; }
+  });
 
   refresh(); loadPhotos();
   setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
