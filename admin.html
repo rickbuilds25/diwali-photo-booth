@@ -43,6 +43,14 @@
   .yes { padding: 11px 18px; border-radius: 999px; font-weight: 700; color: #3a0a0a; background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); }
   .no { padding: 11px 16px; border-radius: 999px; font-weight: 600; border: 1px solid var(--line); }
   .none { color: var(--ink-dim); font-size: 15px; padding: 6px 2px; }
+  .addbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 12px; }
+  .addbtn { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 999px; font-weight: 700; color: #3a0a0a;
+    background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); cursor: pointer; }
+  .addbtn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .addbtn:focus-within { outline: 3px solid var(--gold); outline-offset: 3px; }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-dim); }
+  .toggle input { accent-color: var(--gold); width: 18px; height: 18px; }
+  .addnote { font-size: 14px; color: var(--ink-dim); min-height: 1.4em; margin: 0 0 10px; }
   .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(30%, 150px), 1fr)); gap: 8px; }
   .ph { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 5; background: var(--velvet); }
   .ph img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -85,6 +93,11 @@
 
   <h2>Photos in the gallery <span id="nPh"></span></h2>
   <p class="none" id="phNote">Tap Delete, then tap again to confirm. A deleted photo goes to the bin in your Google Drive (kept for 30 days) and disappears from guests' phones within about 20 seconds.</p>
+  <div class="addbar">
+    <label class="addbtn" for="addIn">+ Add photos from this phone<input id="addIn" type="file" accept="image/*" multiple></label>
+    <label class="toggle"><input id="addFrame" type="checkbox" checked> Add the Diwali frame</label>
+  </div>
+  <p class="addnote" id="addNote" role="status" aria-live="polite">Photos go straight into the guest gallery. With the frame on, each photo is cropped to the booth's portrait shape.</p>
   <div class="pgrid" id="pgrid"></div>
 </main>
 <div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo">
@@ -97,6 +110,7 @@
   <div class="bottom"><button class="del" id="lbDel" type="button">Delete this photo</button></div>
 </div>
 <script src="config.js"></script>
+<script src="frame.js"></script>
 <script>
 (() => {
   'use strict';
@@ -274,6 +288,52 @@
     if (el && tb) { tb.classList.add('arm'); await removePhoto(id, el, tb); }
     if (!photoList.some(p => p.id === id)) { if (nextId) openLb(nextId); else closeLb(); }
     else { b.disabled = false; b.classList.remove('arm'); b.textContent = 'Delete this photo'; }
+  });
+
+  // ---------- add photos from this phone ----------
+  async function loadImage(file) {
+    try { const b = await createImageBitmap(file, { imageOrientation: 'from-image' }); return { img: b, w: b.width, h: b.height }; }
+    catch (e) {
+      const u = URL.createObjectURL(file);
+      try { const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = u; }); return { img, w: img.naturalWidth, h: img.naturalHeight }; }
+      finally { setTimeout(() => URL.revokeObjectURL(u), 1000); }
+    }
+  }
+  const toJpeg = (c, q) => new Promise(r => c.toBlob(r, 'image/jpeg', q));
+  const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
+  async function prepare(file, framed) {
+    const { img, w, h } = await loadImage(file);
+    let c;
+    if (framed) { await DiwaliFrame.ready(); c = DiwaliFrame.compose(img, w, h, false); }
+    else { const k = Math.min(1, 2048 / Math.max(w, h)); c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); }
+    const t = document.createElement('canvas'); t.width = 480; t.height = Math.round(c.height * 480 / c.width); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    return { full: await toJpeg(c, 0.9), thumb: await toJpeg(t, 0.8) };
+  }
+  function photoName(i) {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return `phone-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${i}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+  }
+  let adding = false;
+  $('addIn').addEventListener('change', async e => {
+    const files = [...e.target.files]; e.target.value = '';
+    if (!files.length || adding) return;
+    adding = true; const framed = $('addFrame').checked, note = $('addNote'); let ok = 0, failed = 0;
+    for (let i = 0; i < files.length; i++) {
+      note.textContent = `Adding photo ${i + 1} of ${files.length}…`;
+      try {
+        const { full, thumb } = await prepare(files[i], framed);
+        const j = await (await fetch(SCRIPT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ admin: ADMIN, action: 'upload', name: photoName(i), data: await b64(full), thumb: await b64(thumb) }) })).json();
+        if (!j.ok) throw new Error(j.error);
+        ok++;
+      } catch (err) {
+        failed++;
+        if (err.message === 'bad_key') { note.textContent = 'Adding photos needs the updated script. Redeploy it as a new version, then try again.'; adding = false; return; }
+      }
+    }
+    adding = false;
+    note.textContent = failed ? `Added ${ok}. ${failed} could not be added; try those again.` : `Added ${ok} photo${ok === 1 ? '' : 's'} to the guest gallery.`;
+    loadPhotos();
   });
 
   refresh(); loadPhotos();
