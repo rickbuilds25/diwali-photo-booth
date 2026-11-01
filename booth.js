@@ -119,6 +119,13 @@ const GALLERY_KEY = store.get('gallery-key') || '';
 const GALLERY_ON = !!(GALLERY_URL && GALLERY_KEY);
 let liveUpload = store.get('live-upload') === '1';
 let upBusy = false, upFails = 0, upTimer = 0;
+// small copy for the gallery grid, so guests' phones load the wall quickly
+async function thumbOf(blob) {
+  const bmp = await createImageBitmap(blob), k = 480 / bmp.width;
+  const c = document.createElement('canvas'); c.width = 480; c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+}
 function blobToBase64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(b); }); }
 async function queueUpload(items) {
   if (!GALLERY_ON) return;
@@ -133,7 +140,7 @@ async function pumpUploads() {
     try { list = (await allPhotos()).filter(p => p.toUpload && !p.uploaded).reverse(); } catch (e) {}
     for (const p of list) {
       if (state === 'countdown' || state === 'capturing') break;          // never slow down a capture
-      const body = JSON.stringify({ key: GALLERY_KEY, name: fname(p.ts), data: await blobToBase64(p.blob) });
+      const body = JSON.stringify({ key: GALLERY_KEY, name: fname(p.ts), data: await blobToBase64(p.blob), thumb: await blobToBase64(await thumbOf(p.blob)) });
       const r = await fetch(GALLERY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error || 'upload failed');

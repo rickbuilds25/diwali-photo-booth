@@ -12,8 +12,10 @@ MediaPipe Tasks Vision is © Google, Apache License 2.0. Fonts: Yatra One and Co
 
 ## Guest gallery
 
-Saved photos (the framed copies only) can go to a Google Drive folder through a small Apps Script that you own. Guests scan the QR code on the table cards to open `gallery.html`, which shows the photos live and lets them save picked ones to their phone.
+Saved photos (the framed copies only) can go to a private Google Drive folder through a small Apps Script that the host owns. Guests scan the QR code on the table cards to open `gallery.html`, type their name, and wait: nothing is shown until the host approves them on `admin.html`. Approved guests see the photos live and can save picked ones to their phone; the host can revoke anyone at any time.
 
 - The script URL goes in `config.js`.
 - The booth device is set up once with `?upload=<UPLOAD_KEY>`; the key is remembered on that device and never stored in this repo.
-- The QR code links to `gallery.html#k=<VIEW_KEY>`.
+- The QR code links to `gallery.html#k=<VIEW_KEY>`; that only lets a phone ask for access.
+- The host page is `admin.html#a=<ADMIN_KEY>`; keep that link private.
+- Drive files stay private: thumbnails and photos reach guests only through the script, after it checks approval.

@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c0308">
+<meta name="robots" content="noindex">
+<title>Guest approvals</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 18q12 12 24 0z%27 fill=%27%23f6c453%27/%3E%3Cpath d=%27M16 4q-5 8 0 12q5-4 0-12z%27 fill=%27%23f5871a%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root {
+    --night: #16030a; --velvet: #2c0710; --wine: #5a0f1c; --line: rgba(246,196,83,0.28);
+    --gold: #f6c453; --gold-hi: #fff1c2; --gold-lo: #c9821e; --ink: #fbe9c8; --ink-dim: #cfae84;
+    --ok: #7fd18b; --no: #ff9a88;
+    --serif: 'Cormorant Garamond', Georgia, serif; --ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; background: var(--night); color: var(--ink); font-family: var(--ui); font-size: 16px; line-height: 1.45; }
+  body { background: radial-gradient(110% 40% at 50% 0%, var(--wine), var(--velvet) 55%, var(--night)) fixed; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(40px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  h1 { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 34px; color: var(--gold-hi); }
+  .sum { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+  .chip { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+  .chip b { color: var(--ink); }
+  .chip.wait b { color: var(--gold); }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 18px; }
+  .small { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: rgba(22,3,10,0.6); font-size: 14px; font-weight: 600; }
+  .updated { font-size: 13px; color: var(--ink-dim); }
+  h2 { margin: 22px 0 8px; font-family: var(--serif); font-weight: 700; font-size: 22px; display: flex; gap: 10px; align-items: baseline; }
+  h2 span { font-family: var(--ui); font-size: 14px; font-weight: 500; color: var(--ink-dim); }
+  .list { display: grid; gap: 8px; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(22,3,10,0.55); }
+  .row.pending { border-color: rgba(246,196,83,0.7); background: rgba(90,15,28,0.6); }
+  .who { min-width: 0; }
+  .name { font-weight: 600; font-size: 18px; overflow-wrap: anywhere; }
+  .when { font-size: 13px; color: var(--ink-dim); }
+  .acts { display: flex; gap: 8px; }
+  .yes { padding: 11px 18px; border-radius: 999px; font-weight: 700; color: #3a0a0a; background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); }
+  .no { padding: 11px 16px; border-radius: 999px; font-weight: 600; border: 1px solid var(--line); }
+  .none { color: var(--ink-dim); font-size: 15px; padding: 6px 2px; }
+  .msg { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); color: var(--no); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Guest approvals</h1>
+  <div class="sum" id="sum"><span class="chip">Loading…</span></div>
+  <div class="tools">
+    <button class="small" id="alertsBtn" type="button">Turn on alerts</button>
+    <button class="small" id="approveAll" type="button" hidden>Approve everyone waiting</button>
+    <span class="updated" id="updated"></span>
+  </div>
+  <p class="msg" id="msg" hidden></p>
+
+  <h2>Waiting <span id="nWait"></span></h2>
+  <div class="list" id="waiting"><p class="none">Nobody is waiting. New requests appear here by themselves.</p></div>
+  <h2>Approved <span id="nOk"></span></h2>
+  <div class="list" id="approved"><p class="none">No one approved yet.</p></div>
+  <h2>Not allowed <span id="nNo"></span></h2>
+  <div class="list" id="denied"><p class="none">No one.</p></div>
+</main>
+<script src="config.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const ADMIN = hash.get('a') || '';
+  const SCRIPT = hash.get('s') || (window.BOOTH_CONFIG && BOOTH_CONFIG.script) || '';
+  const msg = t => { $('msg').textContent = t; $('msg').hidden = !t; };
+  if (!ADMIN) return msg('This page needs your private host link. Open the link Claude gave you.');
+  if (!SCRIPT) return msg('The gallery script is not connected yet.');
+
+  let guests = [], seenPending = null, alerts = false, ac = null, busy = new Set();
+  function ago(t) { const s = Math.round((Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; }
+  function chime() {
+    if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+    if (!ac) return;
+    for (const [f, d] of [[880, 0], [1320, 0.12]]) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; g.gain.setValueAtTime(0.12, ac.currentTime + d); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d + 0.35); o.connect(g).connect(ac.destination); o.start(ac.currentTime + d); o.stop(ac.currentTime + d + 0.4); }
+  }
+  $('alertsBtn').addEventListener('click', () => {
+    alerts = !alerts;
+    if (alerts && !ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    $('alertsBtn').textContent = alerts ? 'Alerts on' : 'Turn on alerts'; if (alerts) chime();
+  });
+
+  async function refresh() {
+    try {
+      const j = await (await fetch(`${SCRIPT}?admin=${encodeURIComponent(ADMIN)}&op=guests&t=${Date.now()}`)).json();
+      if (!j.ok) return msg(j.error === 'bad_key' ? 'This host link is not valid. Use the exact link Claude gave you.' : 'Could not load the guest list.');
+      msg(''); guests = j.guests;
+      const pend = guests.filter(g => g.status === 'pending');
+      if (seenPending && alerts && pend.some(g => !seenPending.has(g.token))) chime();
+      seenPending = new Set(pend.map(g => g.token));
+      render(j.photos);
+      $('updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) { $('updated').textContent = 'Offline, retrying…'; }
+  }
+  function render(photoCount) {
+    const by = s => guests.filter(g => g.status === s);
+    const w = by('pending'), ok = by('approved'), no = by('denied');
+    document.title = (w.length ? `(${w.length}) ` : '') + 'Guest approvals';
+    $('sum').innerHTML = '';
+    for (const [cls, n, label] of [['wait', w.length, 'waiting'], ['', ok.length, 'approved'], ['', photoCount, 'photos in the gallery']]) {
+      const c = document.createElement('span'); c.className = 'chip ' + cls; const b = document.createElement('b'); b.textContent = n; c.append(b, ' ' + label); $('sum').appendChild(c);
+    }
+    $('nWait').textContent = w.length || ''; $('nOk').textContent = ok.length || ''; $('nNo').textContent = no.length || '';
+    $('approveAll').hidden = w.length < 2; $('approveAll').textContent = `Approve all ${w.length} waiting`;
+    fill('waiting', w, 'Nobody is waiting. New requests appear here by themselves.', g => [['yes', 'Approve', 'approved'], ['no', 'Deny', 'denied']]);
+    fill('approved', ok, 'No one approved yet.', g => [['no', 'Revoke', 'denied']]);
+    fill('denied', no, 'No one.', g => [['no', 'Allow', 'approved'], ['no', 'Remove', 'remove']]);
+  }
+  function fill(id, list, empty, actions) {
+    const box = $(id); box.innerHTML = '';
+    if (!list.length) { const p = document.createElement('p'); p.className = 'none'; p.textContent = empty; box.appendChild(p); return; }
+    for (const g of list) {
+      const row = document.createElement('div'); row.className = 'row ' + g.status;
+      const who = document.createElement('div'); who.className = 'who';
+      const n = document.createElement('div'); n.className = 'name'; n.textContent = g.name;           // guest-typed text: never as HTML
+      const t = document.createElement('div'); t.className = 'when'; t.textContent = (g.status === 'pending' ? 'asked ' : 'asked ') + ago(g.t);
+      who.append(n, t);
+      const acts = document.createElement('div'); acts.className = 'acts';
+      for (const [cls, label, status] of actions(g)) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label; b.disabled = busy.has(g.token);
+        b.addEventListener('click', () => decide(g.token, status));
+        acts.appendChild(b);
+      }
+      row.append(who, acts); box.appendChild(row);
+    }
+  }
+  async function decide(token, status) {
+    busy.add(token);
+    const g = guests.find(x => x.token === token); if (g && status !== 'remove') g.status = status; else guests = guests.filter(x => x.token !== token);
+    render(Number($('sum').lastChild?.firstChild?.textContent) || 0);
+    try {
+      const j = await (await fetch(SCRIPT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ admin: ADMIN, action: 'decide', token, status }) })).json();
+      if (!j.ok) msg('That change did not save. Try again.');
+    } catch (e) { msg('No connection. That change did not save; try again.'); }
+    busy.delete(token); refresh();
+  }
+  $('approveAll').addEventListener('click', async () => { for (const g of guests.filter(x => x.status === 'pending')) await decide(g.token, 'approved'); });
+  refresh(); setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+})();
+</script>
+</body>
+</html>
