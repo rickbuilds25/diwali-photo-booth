@@ -9,3 +9,11 @@ Open the page on a phone, tap **Start the booth**, and it takes a framed photo w
 - URL options: `?sens=0.45` smile threshold, `?hold=0.7` seconds of smiling, `?count=3` countdown, `?preview=10` seconds before each photo saves, `?cam=back` rear camera, `?zoom=2` how far the second detector zooms in for people standing further back, `?debug` live readout.
 
 MediaPipe Tasks Vision is © Google, Apache License 2.0. Fonts: Yatra One and Cormorant Garamond, SIL Open Font License.
+
+## Guest gallery
+
+Saved photos (the framed copies only) can go to a Google Drive folder through a small Apps Script that you own. Guests scan the QR code on the table cards to open `gallery.html`, which shows the photos live and lets them save picked ones to their phone.
+
+- The script URL goes in `config.js`.
+- The booth device is set up once with `?upload=<UPLOAD_KEY>`; the key is remembered on that device and never stored in this repo.
+- The QR code links to `gallery.html#k=<VIEW_KEY>`.

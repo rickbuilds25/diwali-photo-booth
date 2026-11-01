@@ -64,7 +64,8 @@ async function refreshRoll() {
   let list = [];
   try { list = await allPhotos(); } catch (e) { /* storage blocked: roll stays empty */ }
   const left = list.filter(p => !p.exported && !(AUTOSAVE && p.saved)).length;
-  $('rollCount').textContent = (list.length === 1 ? '1 photo' : `${list.length} photos`) + (!AUTOSAVE && left ? ` · ${left} to save` : '');
+  const waiting = list.filter(p => p.toUpload && !p.uploaded).length;
+  $('rollCount').textContent = (list.length === 1 ? '1 photo' : `${list.length} photos`) + (!AUTOSAVE && left ? ` · ${left} to save` : '') + (waiting ? ` · ${waiting} uploading` : '');
   const thumb = $('rollThumb');
   if (thumb.dataset.url) URL.revokeObjectURL(thumb.dataset.url);
   if (list[0]) { const u = URL.createObjectURL(list[0].blob); thumb.src = u; thumb.dataset.url = u; } else { thumb.removeAttribute('src'); thumb.dataset.url = ''; }
@@ -85,6 +86,7 @@ async function autoSave(p) {
   downloadFile(p.blob, fname(p.ts));
   if (p.raw) { await new Promise(r => setTimeout(r, 400)); downloadFile(p.raw, rawName(p.ts)); }
   try { await putPhoto(p); } catch (e) { /* the saved flag is only a convenience */ }
+  queueUpload([p]);
 }
 async function savePhotos(items) {
   const files = [];
@@ -104,7 +106,53 @@ async function savePhotos(items) {
   await markExported(items);
   return 'downloaded';
 }
-async function markExported(items) { for (const p of items) { p.exported = true; try { await putPhoto(p); } catch (e) { /* only a convenience */ } } }
+async function markExported(items) { for (const p of items) { p.exported = true; try { await putPhoto(p); } catch (e) { /* only a convenience */ } } queueUpload(items); }
+
+// ---------- guest gallery (Google Drive, through the Apps Script in drive-script/Code.gs) ----------
+// One-time setup on the booth device: open the booth with ?upload=<UPLOAD_KEY> (and ?gallery=<script URL>
+// if config.js doesn't carry it yet). Both are remembered on this device.
+const store = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+if (Q.get('upload')) store.set('gallery-key', Q.get('upload'));
+if (Q.get('gallery')) store.set('gallery-url', Q.get('gallery'));
+const GALLERY_URL = store.get('gallery-url') || (window.BOOTH_CONFIG && BOOTH_CONFIG.script) || '';
+const GALLERY_KEY = store.get('gallery-key') || '';
+const GALLERY_ON = !!(GALLERY_URL && GALLERY_KEY);
+let liveUpload = store.get('live-upload') === '1';
+let upBusy = false, upFails = 0, upTimer = 0;
+function blobToBase64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(b); }); }
+async function queueUpload(items) {
+  if (!GALLERY_ON) return;
+  for (const p of items) if (!p.uploaded && !p.toUpload) { p.toUpload = true; try { await putPhoto(p); } catch (e) {} }
+  pumpUploads();
+}
+async function pumpUploads() {
+  if (!GALLERY_ON || upBusy) return;
+  upBusy = true; clearTimeout(upTimer);
+  try {
+    let list = [];
+    try { list = (await allPhotos()).filter(p => p.toUpload && !p.uploaded).reverse(); } catch (e) {}
+    for (const p of list) {
+      if (state === 'countdown' || state === 'capturing') break;          // never slow down a capture
+      const body = JSON.stringify({ key: GALLERY_KEY, name: fname(p.ts), data: await blobToBase64(p.blob) });
+      const r = await fetch(GALLERY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || 'upload failed');
+      p.uploaded = true; p.toUpload = false; p.driveId = j.id;
+      try { await putPhoto(p); } catch (e) {}
+      const shown = rollItems.find(x => x.id === p.id); if (shown) { shown.uploaded = true; shown.toUpload = false; shown.driveId = j.id; }
+      if (!$('roll').hidden) updRollBtns();
+      upFails = 0; refreshRoll(); if (!$('roll').hidden) markTiles();
+    }
+  } catch (e) {
+    upFails++; console.warn('Guest gallery upload failed; will retry', e);
+  } finally {
+    upBusy = false;
+    // keep trying in the background: quickly at first, then every minute
+    const left = (await allPhotos().catch(() => [])).some(p => p.toUpload && !p.uploaded);
+    if (left) upTimer = setTimeout(pumpUploads, Math.min(60000, 4000 * Math.pow(2, Math.min(upFails, 4))));
+  }
+}
+window.addEventListener('online', () => { upFails = 0; pumpUploads(); });
 
 // ---------- camera ----------
 async function openCamera() {
@@ -204,6 +252,7 @@ function showReview(p) {
 function closeReview() {
   clearTimeout(reviewTimer); $('review').hidden = true;
   autoSave(reviewBlob);
+  if (liveUpload && reviewBlob) queueUpload([reviewBlob]);
   if (state === 'review') go('cooldown');
 }
 // ---------- main loop ----------
@@ -301,6 +350,10 @@ function updRollBtns() {
     $('saveSel').disabled = !rollItems.length;
   }
   $('clearAll').disabled = !rollItems.length;
+  $('uploadSel').hidden = !GALLERY_ON;
+  const notUp = rollItems.filter(p => !p.uploaded).length;
+  $('uploadSel').textContent = picked.size ? `Upload ${picked.size} picked to guest gallery` : notUp ? `Upload ${notUp} to guest gallery` : 'All in the guest gallery';
+  $('uploadSel').disabled = !picked.size && !notUp;
 }
 $('rollBtn').addEventListener('click', openRoll);
 $('closeRoll').addEventListener('click', () => { $('roll').hidden = true; go('cooldown'); });
@@ -316,7 +369,14 @@ $('saveSel').addEventListener('click', async () => {
   picked.clear(); $('rollGrid').querySelectorAll('[aria-pressed="true"]').forEach(b => b.setAttribute('aria-pressed', 'false'));
   markTiles(); updRollBtns(); refreshRoll();
 });
-function markTiles() { [...$('rollGrid').children].forEach((b, i) => { const it = rollItems[i]; if (it) b.classList.toggle('done', !!it.exported); }); }
+function markTiles() { [...$('rollGrid').children].forEach((b, i) => { const it = rollItems[i]; if (it) { b.classList.toggle('done', !!it.exported); b.classList.toggle('up', !!it.uploaded); } }); }
+$('uploadSel').addEventListener('click', async () => {
+  const list = picked.size ? rollItems.filter(p => picked.has(p.id)) : rollItems.filter(p => !p.uploaded);
+  if (!list.length) { $('rollNote').textContent = 'Every photo is already in the guest gallery.'; return; }
+  await queueUpload(list);
+  $('rollNote').textContent = `Sending ${list.length} photo${list.length === 1 ? '' : 's'} to the guest gallery. A cloud mark shows the ones that have arrived.`;
+  picked.clear(); $('rollGrid').querySelectorAll('[aria-pressed="true"]').forEach(b => b.setAttribute('aria-pressed', 'false')); updRollBtns();
+});
 $('clearAll').addEventListener('click', async () => {
   const b = $('clearAll');
   if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Tap again to delete every photo'; return; }
@@ -325,6 +385,10 @@ $('clearAll').addEventListener('click', async () => {
 document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { if (!$('start').hidden) return; e.preventDefault(); if (!$('review').hidden) closeReview(); else startCountdown(); } });
 
 if (DEBUG) $('debug').hidden = false;
+$('galleryState').textContent = GALLERY_ON ? 'Guest gallery: connected. Saved photos are sent to it.' : 'Guest gallery: not set up on this device yet.';
+$('liveUpload').checked = liveUpload; $('liveUpload').disabled = !GALLERY_ON;
+$('liveUpload').addEventListener('change', e => { liveUpload = e.target.checked; store.set('live-upload', liveUpload ? '1' : '0'); });
+pumpUploads();
 if (!AUTOSAVE) $('reviewNote').textContent = 'Kept on this iPad. Save the photos to Photos from the Photos button.';
 await DiwaliFrame.ready();
 refreshRoll();

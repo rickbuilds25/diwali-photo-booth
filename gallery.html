@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c0308">
+<title>Diwali Party Photos</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 18q12 12 24 0z%27 fill=%27%23f6c453%27/%3E%3Cpath d=%27M16 4q-5 8 0 12q5-4 0-12z%27 fill=%27%23f5871a%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root {
+    --night: #16030a; --velvet: #2c0710; --wine: #5a0f1c; --line: rgba(246,196,83,0.28);
+    --gold: #f6c453; --gold-hi: #fff1c2; --gold-lo: #c9821e;
+    --ink: #fbe9c8; --ink-dim: #cfae84; --danger: #ff9a88;
+    --display: 'Yatra One', 'Cormorant Garamond', Georgia, serif;
+    --serif: 'Cormorant Garamond', Georgia, serif;
+    --ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; background: var(--night); color: var(--ink); font-family: var(--ui); font-size: 16px; line-height: 1.5; }
+  body { background: radial-gradient(110% 50% at 50% 0%, var(--wine), var(--velvet) 50%, var(--night) 100%) fixed; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); }
+
+  #toran { display: block; width: 100%; height: auto; aspect-ratio: 1080 / 150; }
+  header { text-align: center; display: grid; gap: 2px; padding: 4px 0 14px; }
+  .deva { font-family: var(--display); color: var(--gold); font-size: 18px; }
+  h1 { margin: 0; font-family: var(--serif); font-style: italic; font-weight: 600; font-size: clamp(28px, 7vw, 46px); line-height: 1.1; color: var(--gold-hi); text-wrap: balance; }
+  .occasion { font-family: var(--display); letter-spacing: 0.3em; font-size: 14px; color: var(--gold); }
+
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 0 8px; background: linear-gradient(var(--night) 70%, rgba(22,3,10,0)); }
+  .count { font-size: 14px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+  .count b { color: var(--ink); font-weight: 600; }
+  .pill { padding: 9px 18px; border-radius: 999px; border: 1px solid var(--line); background: rgba(22,3,10,0.7); font-weight: 600; font-size: 15px; }
+  .pill.on { background: var(--gold); color: #3a0a0a; border-color: transparent; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(46%, 200px), 1fr)); gap: 8px; padding-bottom: 120px; }
+  .tile { position: relative; padding: 0; border-radius: 8px; overflow: hidden; aspect-ratio: 4 / 5; background: var(--velvet); }
+  .tile img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; }
+  .tile img.ok { opacity: 1; }
+  .tile .tick { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,0.25); display: none; }
+  .selecting .tile .tick { display: block; }
+  .tile.sel .tick { background: var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12l4 4 8-8' fill='none' stroke='%233a0a0a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 18px no-repeat; border-color: var(--gold); }
+  .tile.sel img { transform: scale(0.94); border-radius: 6px; transition: transform .15s; }
+  .tile .new { position: absolute; left: 8px; top: 8px; padding: 1px 9px; border-radius: 999px; background: var(--gold); color: #3a0a0a; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .empty { text-align: center; padding: 40px 10px 80px; color: var(--ink-dim); }
+  .empty h2 { margin: 0 0 6px; font-family: var(--serif); font-weight: 700; font-size: 26px; color: var(--ink); }
+  .empty p { margin: 0 auto; max-width: 38ch; }
+
+  .tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex; gap: 10px; justify-content: center; align-items: center;
+    padding: 14px max(14px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(rgba(22,3,10,0), rgba(22,3,10,0.95) 35%); }
+  .btn { padding: 14px 26px; border-radius: 999px; font-weight: 700; font-size: 16px; color: #3a0a0a; background: linear-gradient(180deg, var(--gold-hi), var(--gold) 55%, var(--gold-lo)); box-shadow: 0 8px 26px rgba(255,150,40,0.3); }
+  .btn.ghost { color: var(--ink); background: rgba(22,3,10,0.8); border: 1px solid var(--line); box-shadow: none; }
+  .btn[disabled] { opacity: 0.55; }
+
+  .viewer { position: fixed; inset: 0; z-index: 20; display: grid; grid-template-rows: auto 1fr auto; background: rgba(10,1,4,0.97);
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  .viewer .top { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; color: var(--ink-dim); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .viewer .stage { position: relative; min-height: 0; display: grid; place-items: center; touch-action: pan-y; }
+  .viewer .stage img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .viewer .nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; border-radius: 50%; background: rgba(22,3,10,0.6); border: 1px solid var(--line); font-size: 24px; display: grid; place-items: center; }
+  .viewer .prev { left: 10px; } .viewer .next { right: 10px; }
+  .viewer .bottom { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 14px 16px; }
+  .hint { font-size: 13px; color: var(--ink-dim); text-align: center; }
+  .toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 30; padding: 10px 18px; border-radius: 12px;
+    background: rgba(22,3,10,0.95); border: 1px solid var(--line); font-size: 15px; max-width: calc(100% - 32px); text-align: center; }
+  .toast.err { color: var(--danger); }
+  @media (min-width: 700px) { .grid { gap: 12px; } }
+  @media (prefers-reduced-motion: reduce) { .tile img, .tile.sel img { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="toran" width="1080" height="150" aria-hidden="true"></canvas>
+<div class="wrap">
+  <header>
+    <span class="deva" lang="hi">शुभ दीपावली</span>
+    <h1>Arindam, Pawnita &amp; Rian's</h1>
+    <span class="occasion">DIWALI PARTY 2026</span>
+  </header>
+  <div class="bar">
+    <span class="count" id="count" aria-live="polite">Loading photos…</span>
+    <button class="pill" id="selectBtn" type="button" hidden>Select</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>
+    <h2 id="emptyTitle">No photos yet</h2>
+    <p id="emptyText">Smile at the photo booth. Photos appear here as soon as the hosts add them, and this page updates by itself.</p>
+  </div>
+</div>
+
+<div class="tray" id="tray" hidden>
+  <button class="btn ghost" id="cancelSel" type="button">Cancel</button>
+  <button class="btn" id="saveSel" type="button" disabled>Save photos</button>
+</div>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="top"><span id="vPos"></span><button class="pill" id="vClose" type="button">Close</button></div>
+  <div class="stage" id="vStage">
+    <img id="vImg" alt="Party photo">
+    <button class="nav prev" id="vPrev" type="button" aria-label="Previous photo">‹</button>
+    <button class="nav next" id="vNext" type="button" aria-label="Next photo">›</button>
+  </div>
+  <div class="bottom">
+    <button class="btn" id="vSave" type="button">Save to my phone</button>
+    <span class="hint">You can also press and hold the photo to save it.</span>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="config.js"></script>
+<script src="frame.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const KEY = hash.get('k') || '';
+  const SCRIPT = hash.get('s') || (window.BOOTH_CONFIG && BOOTH_CONFIG.script) || '';
+  const REFRESH_MS = 20000;
+  let photos = [], known = null, selecting = false, sel = new Set(), vIdx = -1;
+  const cache = new Map();          // id -> Blob (full-size), so saving can happen straight from a tap
+
+  // header garland: the top of the booth's frame
+  DiwaliFrame.ready().then(F => { const c = $('toran'), x = c.getContext('2d'); x.drawImage(F.overlay, 0, 0, 1080, 150, 0, 0, 1080, 150); });
+
+  function toast(t, err) { const el = $('toast'); el.textContent = t; el.classList.toggle('err', !!err); el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; }, 3500); }
+  const thumb = (id, w) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${w}`;
+  const alt = (id, w) => `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=w${w}`;
+
+  function stop(title, text) { $('count').textContent = ''; $('emptyTitle').textContent = title; $('emptyText').textContent = text; $('empty').hidden = false; }
+  if (!KEY) return stop('Scan the QR code again', 'This link is missing its gallery code. Scan the QR code on the table card to open the party photos.');
+  if (!SCRIPT) return stop('The gallery opens soon', 'The hosts are still setting up the photo gallery. Try again in a little while.');
+
+  // ---------- list ----------
+  async function load() {
+    try {
+      const r = await fetch(`${SCRIPT}?key=${encodeURIComponent(KEY)}&t=${Date.now()}`);
+      const j = await r.json();
+      if (!j.ok) { if (j.error === 'bad_key') return stop('Scan the QR code again', 'This gallery code does not match. Scan the QR code on the table card.'); throw new Error(j.error); }
+      const fresh = known ? j.photos.filter(p => !known.has(p.id)).map(p => p.id) : [];
+      known = new Set(j.photos.map(p => p.id));
+      photos = j.photos;
+      render(new Set(fresh));
+    } catch (e) {
+      if (!photos.length) $('count').textContent = 'Could not reach the gallery. It will try again by itself.';
+    }
+  }
+  function render(fresh) {
+    $('count').innerHTML = photos.length ? `<b>${photos.length}</b> photo${photos.length === 1 ? '' : 's'} · updates by itself` : '';
+    $('empty').hidden = photos.length > 0; $('selectBtn').hidden = !photos.length;
+    const grid = $('grid'), have = new Map([...grid.children].map(el => [el.dataset.id, el]));
+    const frag = document.createDocumentFragment();
+    photos.forEach((p, i) => {
+      let el = have.get(p.id);
+      if (!el) {
+        el = document.createElement('button'); el.type = 'button'; el.className = 'tile'; el.dataset.id = p.id; el.setAttribute('aria-label', 'Open photo');
+        const img = document.createElement('img'); img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+        img.onload = () => img.classList.add('ok'); img.onerror = () => { if (!img.dataset.alt) { img.dataset.alt = '1'; img.src = alt(p.id, 600); } };
+        img.src = thumb(p.id, 600);
+        const tick = document.createElement('span'); tick.className = 'tick';
+        el.append(img, tick);
+        el.addEventListener('click', () => tap(p.id));
+      }
+      if (fresh && fresh.has(p.id) && !el.querySelector('.new')) { const n = document.createElement('span'); n.className = 'new'; n.textContent = 'New'; el.appendChild(n); }
+      el.classList.toggle('sel', sel.has(p.id));
+      frag.appendChild(el);
+    });
+    grid.replaceChildren(frag);
+  }
+  load();
+  setInterval(() => { if (document.visibilityState === 'visible' && $('viewer').hidden) load(); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
+
+  // ---------- full-size copies (through the script, so saving works on every phone) ----------
+  async function full(id) {
+    if (cache.has(id)) return cache.get(id);
+    const r = await fetch(`${SCRIPT}?key=${encodeURIComponent(KEY)}&id=${encodeURIComponent(id)}`);
+    const j = await r.json(); if (!j.ok) throw new Error(j.error);
+    const bin = atob(j.data), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    const b = new File([u], j.name || 'diwali-party-2026.jpg', { type: 'image/jpeg' });
+    cache.set(id, b); return b;
+  }
+  // Phones: share sheet ("Save Image(s)"). Computers: ordinary downloads.
+  async function deliver(files) {
+    const touch = matchMedia('(pointer: coarse)').matches;
+    if (touch && navigator.canShare && navigator.canShare({ files })) {
+      try { await navigator.share({ files }); return 'shared'; }
+      catch (e) { if (e.name === 'AbortError') return 'cancelled'; if (e.name !== 'NotAllowedError') throw e; return 'tap-again'; }
+    }
+    for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000); await new Promise(r => setTimeout(r, 300)); }
+    return 'downloaded';
+  }
+
+  // ---------- viewer ----------
+  function tap(id) { if (selecting) { sel.has(id) ? sel.delete(id) : sel.add(id); render(); updTray(); } else open(photos.findIndex(p => p.id === id)); }
+  function open(i) {
+    if (i < 0 || i >= photos.length) return; vIdx = i; const p = photos[i];
+    const img = $('vImg'); img.src = thumb(p.id, 1600); img.onerror = () => { img.onerror = null; img.src = alt(p.id, 1600); };
+    $('vPos').textContent = `${i + 1} of ${photos.length}`; $('viewer').hidden = false;
+    $('vSave').textContent = 'Save to my phone'; $('vSave').disabled = false;
+    full(p.id).catch(() => {});          // fetch ahead so the Save tap can open the share sheet straight away
+    $('vPrev').hidden = i === 0; $('vNext').hidden = i === photos.length - 1;
+  }
+  $('vClose').addEventListener('click', () => { $('viewer').hidden = true; vIdx = -1; });
+  $('vPrev').addEventListener('click', () => open(vIdx - 1));
+  $('vNext').addEventListener('click', () => open(vIdx + 1));
+  let sx = null; $('vStage').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+  $('vStage').addEventListener('touchend', e => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 60) open(vIdx + (dx < 0 ? 1 : -1)); });
+  document.addEventListener('keydown', e => { if ($('viewer').hidden) return; if (e.key === 'Escape') $('vClose').click(); if (e.key === 'ArrowRight') open(vIdx + 1); if (e.key === 'ArrowLeft') open(vIdx - 1); });
+  $('vSave').addEventListener('click', async () => {
+    const p = photos[vIdx]; if (!p) return; const b = $('vSave');
+    try {
+      const ready = cache.has(p.id);
+      if (!ready) { b.disabled = true; b.textContent = 'Getting the photo…'; await full(p.id); b.disabled = false; b.textContent = 'Tap again to save'; return; }
+      const r = await deliver([cache.get(p.id)]);
+      b.textContent = r === 'tap-again' ? 'Tap again to save' : 'Save to my phone';
+      if (r === 'downloaded') toast('Saved to your downloads.');
+    } catch (e) { b.disabled = false; b.textContent = 'Save to my phone'; toast('That photo could not be saved. Try again.', true); }
+  });
+
+  // ---------- select and save several ----------
+  function updTray() {
+    $('tray').hidden = !selecting;
+    const n = sel.size, ready = n && [...sel].every(id => cache.has(id));
+    $('saveSel').disabled = !n;
+    $('saveSel').textContent = !n ? 'Tap photos to pick them' : ready ? `Save ${n} photo${n === 1 ? '' : 's'}` : `Get ${n} photo${n === 1 ? '' : 's'}`;
+  }
+  $('selectBtn').addEventListener('click', () => { selecting = !selecting; sel.clear(); document.body.classList.toggle('selecting', selecting); $('selectBtn').classList.toggle('on', selecting); $('selectBtn').textContent = selecting ? 'Done' : 'Select'; render(); updTray(); });
+  $('cancelSel').addEventListener('click', () => $('selectBtn').click());
+  $('saveSel').addEventListener('click', async () => {
+    const ids = [...sel], b = $('saveSel');
+    if (!ids.every(id => cache.has(id))) {
+      // step 1: fetch the full-size photos; step 2 (the next tap) hands them to the phone
+      b.disabled = true; let n = 0;
+      try { for (const id of ids) { b.textContent = `Getting ${++n} of ${ids.length}…`; await full(id); } }
+      catch (e) { toast('Some photos could not be fetched. Try again.', true); }
+      b.disabled = false; updTray(); if (ids.every(id => cache.has(id))) toast('Ready. Tap Save to keep them.'); return;
+    }
+    try {
+      const r = await deliver(ids.map(id => cache.get(id)));
+      if (r === 'shared' || r === 'downloaded') { toast(r === 'shared' ? 'Done. Look in your Photos.' : 'Saved to your downloads.'); $('selectBtn').click(); }
+    } catch (e) { toast('Saving did not work. Try fewer photos at a time.', true); }
+  });
+})();
+</script>
+</body>
+</html>

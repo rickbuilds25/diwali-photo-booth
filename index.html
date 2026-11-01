@@ -70,6 +70,11 @@
   #rollGrid button[aria-pressed="true"] { border-color: var(--gold); }
   #rollGrid img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
   #rollGrid button { position: relative; }
+  #rollGrid button.up::before { content: ""; position: absolute; left: 6px; bottom: 6px; width: 22px; height: 22px; border-radius: 50%; z-index: 1;
+    background: rgba(28,3,8,0.85) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 18h10a4 4 0 0 0 0-8 6 6 0 0 0-11.3 1.7A3.2 3.2 0 0 0 7 18z' fill='%23f6c453'/%3E%3C/svg%3E") center / 15px no-repeat; }
+  .gallerySet { display: grid; gap: 6px; justify-items: center; }
+  .toggle { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+  .toggle input { accent-color: var(--gold); width: 18px; height: 18px; }
   #rollGrid button.done::after { content: ""; position: absolute; right: 6px; bottom: 6px; width: 22px; height: 22px; border-radius: 50%;
     background: var(--gold) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12l4 4 8-8' fill='none' stroke='%233a0a0a' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 16px no-repeat; }
   #rollEmpty { font-family: var(--serif); font-size: 22px; color: var(--ink-dim); padding: 30px 0; }
@@ -104,6 +109,10 @@
     <p class="sub">Stand in front of the camera and smile.<br>The booth counts down and takes the photo for you.</p>
     <button id="startBtn" class="btn" type="button">Start the booth</button>
     <p class="note">Put the phone on a stand at face height with the screen facing your guests. The phone asks once to use the camera. Photos stay on this phone until you save them.</p>
+    <div class="gallerySet">
+      <p class="note" id="galleryState">Guest gallery: checking…</p>
+      <label class="note toggle"><input type="checkbox" id="liveUpload"> Send each photo to the guest gallery right after it is taken</label>
+    </div>
     <p id="startErr" class="err" hidden></p>
   </div>
 </section>
@@ -126,6 +135,7 @@
     <div id="rollGrid"></div>
     <div class="row">
       <button id="saveSel" class="btn" type="button">Save all</button>
+      <button id="uploadSel" class="btn ghost" type="button" hidden>Upload to guest gallery</button>
       <button id="clearAll" class="btn ghost" type="button">Delete all</button>
       <button id="closeRoll" class="btn ghost" type="button">Back to booth</button>
     </div>
@@ -133,6 +143,7 @@
 </section>
 <div id="debug" hidden></div>
 
+<script src="config.js"></script>
 <script src="frame.js"></script>
 <script type="module" src="booth.js"></script>
 </body>
