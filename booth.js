@@ -423,6 +423,18 @@ $('clearAll').addEventListener('click', async () => {
 });
 document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { if (!$('start').hidden) return; e.preventDefault(); if (!$('review').hidden) closeReview(); else startCountdown(); } });
 
+// Fit the preview: the largest 4:5 box inside the space between the status line and the buttons.
+function fitPreview() {
+  const r = $('stageWrap').getBoundingClientRect(), pad = 12;
+  let h = Math.max(0, r.height - pad * 2), w = h * 1080 / 1350;
+  if (w > r.width - pad * 2) { w = Math.max(0, r.width - pad * 2); h = w * 1350 / 1080; }
+  preview.style.width = Math.floor(w) + 'px'; preview.style.height = Math.floor(h) + 'px';
+}
+addEventListener('resize', fitPreview);
+addEventListener('orientationchange', () => setTimeout(fitPreview, 300));
+window.visualViewport?.addEventListener('resize', fitPreview);
+if (window.ResizeObserver) new ResizeObserver(fitPreview).observe($('stageWrap'));
+fitPreview();
 if (DEBUG) $('debug').hidden = false;
 probeStorage().then(ok => { if (!ok) { $('startErr').textContent = STORAGE_WARNING; $('startErr').hidden = false; } });
 $('galleryState').textContent = GALLERY_ON ? 'Guest gallery: checking the connection…' : 'Guest gallery: not set up on this device yet.';

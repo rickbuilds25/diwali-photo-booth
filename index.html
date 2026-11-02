@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Diwali Photo Booth</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpath d=%27M4 18q12 12 24 0z%27 fill=%27%23f6c453%27/%3E%3Cpath d=%27M16 4q-5 8 0 12q5-4 0-12z%27 fill=%27%23f5871a%27/%3E%3C/svg%3E">
-<link rel="stylesheet" href="fonts.css?v=1793651761">
+<link rel="stylesheet" href="fonts.css?v=1793652054">
 <style>
   :root {
     --night: #1c0308; --velvet: #3d0812; --wine: #6b1220;
@@ -24,13 +24,14 @@
   button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
   [hidden] { display: none !important; }
 
-  #app { position: fixed; inset: 0; display: grid; grid-template-rows: auto 1fr auto;
+  #app { position: fixed; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
     padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(12px, env(safe-area-inset-left, 0px));
     background: radial-gradient(120% 80% at 50% 55%, var(--wine), var(--velvet) 55%, var(--night)); }
   #status { justify-self: center; margin-top: 12px; padding: 10px 22px; border-radius: 999px; background: rgba(28,3,8,0.72);
     border: 1px solid rgba(246,196,83,0.45); font-family: var(--serif); font-weight: 700; font-size: clamp(20px, 4.6vw, 30px); letter-spacing: 0.02em; text-align: center; }
-  #stageWrap { position: relative; min-height: 0; display: grid; place-items: center; padding-block: 10px; }
-  #preview { max-width: 100%; max-height: 100%; aspect-ratio: 1080 / 1350; height: 100%; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); background: var(--night); }
+  #stageWrap { position: relative; min-height: 0; overflow: hidden; }
+  /* sized in script to the largest 4:5 box that fits, so Safari can't stretch it to the camera's height */
+  #preview { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 240px; height: 300px; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.55); background: var(--night); }
   #count { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
   #count span { font-family: var(--display); font-size: min(46vw, 38vh); line-height: 1; color: var(--gold-hi);
     text-shadow: 0 0 30px rgba(255,150,40,0.9), 0 0 80px rgba(255,120,20,0.6); animation: pop 1s ease-out both; }
@@ -143,8 +144,8 @@
 </section>
 <div id="debug" hidden></div>
 
-<script src="config.js?v=1793651761"></script>
-<script src="frame.js?v=1793651761"></script>
-<script type="module" src="booth.js?v=1793651761"></script>
+<script src="config.js?v=1793652054"></script>
+<script src="frame.js?v=1793652054"></script>
+<script type="module" src="booth.js?v=1793652054"></script>
 </body>
 </html>
