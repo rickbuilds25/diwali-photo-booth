@@ -212,9 +212,13 @@ async function loadDetector() {
     const files = await FilesetResolver.forVisionTasks(new URL('./vendor/mediapipe/wasm', location.href).href);
     const opts = d => ({ baseOptions: { modelAssetPath: new URL('./models/face_landmarker.task', location.href).href, delegate: d },
       runningMode: 'VIDEO', numFaces: 6, outputFaceBlendshapes: true, minFaceDetectionConfidence: 0.4, minFacePresenceConfidence: 0.4, minTrackingConfidence: 0.4 });
-    const make = async () => { try { return await FaceLandmarker.createFromOptions(files, opts('GPU')); } catch (e) { return FaceLandmarker.createFromOptions(files, opts('CPU')); } };
+    const make = async () => {
+      if (IOS) return FaceLandmarker.createFromOptions(files, opts('CPU'));   // Safari's GPU path for this model is unreliable
+      try { return await FaceLandmarker.createFromOptions(files, opts('GPU')); } catch (e) { return FaceLandmarker.createFromOptions(files, opts('CPU')); }
+    };
     landmarker = await make();
     detectOK = true;
+    if (IOS) await new Promise(r => setTimeout(r, 4000));   // let the iPad settle before the second detector loads
     try { farLandmarker = await make(); } catch (e) { farLandmarker = null; }
   } catch (e) {
     console.warn('Smile detection unavailable:', e);
@@ -229,7 +233,7 @@ function smileScores(res) {
   });
 }
 function detect(now) {
-  if (!detectOK || !video.videoWidth || now - lastDetect < 60) return;
+  if (!detectOK || !video.videoWidth || now - lastDetect < (IOS ? 110 : 60)) return;
   lastDetect = now;
   const useFar = farLandmarker && (turn++ % 2 === 1);
   try {
@@ -292,6 +296,7 @@ function closeReview() {
 // ---------- main loop ----------
 function loop(now) {
   const dt = Math.min(0.1, (now - lastFrame) / 1000); lastFrame = now; stateT += dt;
+  if (video.paused && video.srcObject && state !== 'idle') video.play().catch(() => {});   // Safari can pause the camera feed; nudge it back
   if (video.videoWidth) DiwaliFrame.compose(video, video.videoWidth, video.videoHeight, facing === 'user', preview);
 
   if (state === 'ready' || state === 'cooldown') detect(now);
@@ -325,9 +330,9 @@ $('startBtn').addEventListener('click', async () => {
   const err = $('startErr'); err.hidden = true;
   const btn = $('startBtn'); btn.disabled = true; btn.textContent = 'Opening the camera…';
   try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; }
-  try { await document.documentElement.requestFullscreen?.(); } catch (e) { /* phones without full screen */ }
+  try { const fs = document.documentElement.requestFullscreen?.(); if (fs && fs.catch) fs.catch(() => {}); } catch (e) { /* phones without full screen */ }   // never wait: iPad Safari can leave this hanging
   keepAwake();
-  try { await navigator.storage?.persist?.(); } catch (e) { /* not supported */ }
+  try { navigator.storage?.persist?.()?.catch?.(() => {}); } catch (e) { /* not supported */ }
   try { await openCamera(); }
   catch (e) {
     btn.disabled = false; btn.textContent = 'Try again';
