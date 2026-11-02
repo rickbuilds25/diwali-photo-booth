@@ -330,7 +330,6 @@ $('startBtn').addEventListener('click', async () => {
   const err = $('startErr'); err.hidden = true;
   const btn = $('startBtn'); btn.disabled = true; btn.textContent = 'Opening the camera…';
   try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; }
-  try { const fs = document.documentElement.requestFullscreen?.(); if (fs && fs.catch) fs.catch(() => {}); } catch (e) { /* phones without full screen */ }   // never wait: iPad Safari can leave this hanging
   keepAwake();
   try { navigator.storage?.persist?.()?.catch?.(() => {}); } catch (e) { /* not supported */ }
   try { await openCamera(); }
@@ -342,10 +341,21 @@ $('startBtn').addEventListener('click', async () => {
     err.hidden = false; return;
   }
   $('start').hidden = true;
+  goFull();            // after the camera prompt, which would otherwise knock the page out of full screen
   setStatus('Loading smile detection…');
   go('cooldown');
   loadDetector();
 });
+// ---------- full screen ----------
+const fsEl = document.documentElement;
+const fsReq = fsEl.requestFullscreen || fsEl.webkitRequestFullscreen;
+const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function goFull() { if (!fsReq || isFull()) return; try { const r = fsReq.call(fsEl); if (r && r.catch) r.catch(() => {}); } catch (e) { /* not allowed here */ } }   // never wait: iPad Safari can leave this hanging
+function updFullBtn() { $('fullBtn').hidden = !fsReq || isFull() || state === 'idle'; }
+$('fullBtn').addEventListener('click', goFull);
+document.addEventListener('fullscreenchange', updFullBtn); document.addEventListener('webkitfullscreenchange', updFullBtn);
+setInterval(updFullBtn, 1000);
+
 $('shutter').addEventListener('click', () => { if (state === 'ready' || state === 'cooldown') startCountdown(); });
 $('flipBtn').addEventListener('click', async () => {
   if (state === 'idle') return;
