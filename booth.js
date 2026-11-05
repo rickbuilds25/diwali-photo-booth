@@ -1,7 +1,7 @@
 // Diwali Photo Booth — live camera, smile trigger, countdown, framed photo, local photo roll.
 // URL options: ?sens=0.45 (smile threshold 0–1), ?hold=0.7 (seconds a smile must last),
 //              ?count=3 (countdown seconds), ?preview=10 (seconds each photo shows before it saves),
-//              ?cam=back (start on the rear camera), ?zoom=2, ?wide=0 (keep camera's own zoom), ?debug
+//              ?cam=back (start on the rear camera), ?zoom=2, ?wide=0 (keep camera's own zoom), ?hd=1, ?burst=5, ?sharpen=0.35, ?debug
 const Q = new URLSearchParams(location.search);
 const SENS = clampNum(+Q.get('sens'), 0.15, 0.9, 0.45);
 const HOLD = clampNum(+Q.get('hold'), 0.2, 3, 0.7);
@@ -193,7 +193,17 @@ async function openCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
   // Ask for the camera's full 4:3 picture. A 16:9 or square request makes the camera crop its
   // sensor, and with the iPad upright that cuts the width: the picture looks zoomed in.
-  stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1440 }, aspectRatio: { ideal: 4 / 3 } } });
+  const ask = (w, h, exact) => navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: w }, height: { ideal: h }, aspectRatio: exact ? { exact: 4 / 3 } : { ideal: 4 / 3 } } });
+  stream = null;
+  if (HD) {
+    // ?hd=1: the largest 4:3 picture. A bigger but 16:9 picture would crop the width again, so refuse it.
+    try {
+      stream = await ask(4032, 3024, true);
+      const st = stream.getVideoTracks()[0].getSettings(), r = Math.max(st.width, st.height) / Math.min(st.width, st.height);
+      if (Math.abs(r - 4 / 3) > 0.02 || Math.max(st.width, st.height) <= 1920) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    } catch (e) { stream = null; }
+  }
+  if (!stream) stream = await ask(1920, 1440, false);
   await widest(stream.getVideoTracks()[0]);
   video.srcObject = stream;
   await video.play().catch(() => {});
@@ -202,6 +212,7 @@ async function openCamera() {
 
 // Zoom the camera all the way out when the browser allows it (?wide=0 turns this off).
 let camInfo = '';
+const HD = Q.get('hd') === '1';   // ?hd=1 asks for the largest 4:3 picture the camera gives
 async function widest(track) {
   camInfo = '';
   try {
@@ -277,14 +288,58 @@ function startCountdown() {
   go('countdown'); hold = 0; showCount(COUNT);
 }
 function showCount(n) { countEl.innerHTML = ''; const s = document.createElement('span'); s.textContent = n; countEl.appendChild(s); beep(n === 1 ? 990 : 660, 0.18); }
+// ---------- photo quality: sharpest frame of a burst, then light sharpening ----------
+const BURST = clampNum(+Q.get('burst'), 1, 8, 5);          // frames to choose from (?burst=1 turns it off)
+const SHARPEN = Q.has('sharpen') ? Math.min(1, Math.max(0, +Q.get('sharpen') || 0)) : 0.35;   // 0 = off
+const nextFrame = () => new Promise(r => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(() => r()) : setTimeout(r, 70));
+// How sharp a frame is: the variance of a Laplacian on a small greyscale copy of the middle of the picture.
+const probe = document.createElement('canvas'), probeX = probe.getContext('2d', { willReadFrequently: true });
+function sharpness(vw, vh) {
+  const w = 240, h = Math.round(w * vh / vw), sx = vw * 0.2, sy = vh * 0.15;
+  probe.width = w; probe.height = h;
+  probeX.drawImage(video, sx, sy, vw * 0.6, vh * 0.6, 0, 0, w, h);
+  const d = probeX.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11;
+  let sum = 0, sum2 = 0, n = 0;
+  for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+    const i = y * w + x, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - w] - g[i + w];
+    sum += l; sum2 += l * l; n++;
+  }
+  return sum2 / n - (sum / n) ** 2;
+}
+async function bestFrame() {
+  const vw = video.videoWidth, vh = video.videoHeight, mirror = facing === 'user';
+  const raw = document.createElement('canvas'); raw.width = vw; raw.height = vh;
+  const rx = raw.getContext('2d'); if (mirror) { rx.translate(vw, 0); rx.scale(-1, 1); }
+  let best = -1, scores = [];
+  for (let k = 0; k < BURST; k++) {
+    if (k) await nextFrame();
+    const sc = BURST > 1 ? sharpness(vw, vh) : 0; scores.push(sc.toFixed(0));
+    if (sc > best) { best = sc; rx.drawImage(video, 0, 0, vw, vh); }
+  }
+  lastBurst = scores.join(' ');
+  return raw;
+}
+let lastBurst = '';
+// A mild unsharp mask on the photo itself (3x3), to undo some of the softness of video frames.
+function sharpen(cv, amount) {
+  const x = cv.getContext('2d'), w = cv.width, h = cv.height, img = x.getImageData(0, 0, w, h), s = img.data, o = new Uint8ClampedArray(s);
+  const W4 = w * 4;
+  for (let y = 1; y < h - 1; y++) for (let i = y * W4 + 4, e = y * W4 + W4 - 4; i < e; i++) {
+    if ((i & 3) === 3) continue;
+    o[i] = s[i] + amount * (4 * s[i] - s[i - 4] - s[i + 4] - s[i - W4] - s[i + W4]);
+  }
+  img.data.set(o); x.putImageData(img, 0, 0);
+}
+
 async function capture() {
   go('capturing');                // leave 'countdown' at once, so the loop fires only one capture
   shutterSound();
   const f = $('flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
   countEl.innerHTML = '';
-  const vw = video.videoWidth, vh = video.videoHeight, mirror = facing === 'user';
-  const raw = document.createElement('canvas'); raw.width = vw; raw.height = vh;   // the full camera picture, as guests saw it
-  const rx = raw.getContext('2d'); if (mirror) { rx.translate(vw, 0); rx.scale(-1, 1); } rx.drawImage(video, 0, 0, vw, vh);
+  const raw = await bestFrame();                  // the sharpest of a short burst, as guests saw it
+  if (SHARPEN > 0) sharpen(raw, SHARPEN);
+  const vw = raw.width, vh = raw.height;
   const c = DiwaliFrame.compose(raw, vw, vh, false);
   const [blob, rawBlob] = await Promise.all([new Promise(r => c.toBlob(r, 'image/jpeg', 0.92)), new Promise(r => raw.toBlob(r, 'image/jpeg', 0.95))]);
   const p = { id: `p${Date.now()}`, ts: Date.now(), blob, raw: rawBlob, saved: false };
@@ -332,7 +387,7 @@ function loop(now) {
     else if (countEl.textContent !== String(n)) showCount(n);
   }
   ring.style.strokeDashoffset = String(RING_LEN * (1 - (state === 'countdown' ? Math.min(1, stateT / COUNT) : Math.min(1, hold / HOLD))));
-  if (DEBUG) $('debug').textContent = `state ${state}\nfaces ${faces}  smiling ${smiling}\nbest ${bestScore.toFixed(2)}  need ${SENS}\nhold ${hold.toFixed(2)} / ${HOLD}\ndetector ${detectOK ? 'on' : 'off'}  zoom ${farLandmarker ? ZOOM + 'x' : 'off'}\nnear ${seen.near.faces} faces  far ${seen.far.faces} faces\n${camInfo}`;
+  if (DEBUG) $('debug').textContent = `state ${state}\nfaces ${faces}  smiling ${smiling}\nbest ${bestScore.toFixed(2)}  need ${SENS}\nhold ${hold.toFixed(2)} / ${HOLD}\ndetector ${detectOK ? 'on' : 'off'}  zoom ${farLandmarker ? ZOOM + 'x' : 'off'}\nnear ${seen.near.faces} faces  far ${seen.far.faces} faces\n${camInfo}${HD ? (video.videoWidth * video.videoHeight > 1920 * 1440 ? '  (hd on)' : '  (hd not available)') : ''}\nburst ${lastBurst || '-'}`;
   requestAnimationFrame(loop);
 }
 
