@@ -1,7 +1,7 @@
 // Diwali Photo Booth — live camera, smile trigger, countdown, framed photo, local photo roll.
 // URL options: ?sens=0.45 (smile threshold 0–1), ?hold=0.7 (seconds a smile must last),
 //              ?count=3 (countdown seconds), ?preview=10 (seconds each photo shows before it saves),
-//              ?cam=back (start on the rear camera), ?zoom=2, ?debug
+//              ?cam=back (start on the rear camera), ?zoom=2, ?wide=0 (keep camera's own zoom), ?debug
 const Q = new URLSearchParams(location.search);
 const SENS = clampNum(+Q.get('sens'), 0.15, 0.9, 0.45);
 const HOLD = clampNum(+Q.get('hold'), 0.2, 3, 0.7);
@@ -191,10 +191,25 @@ window.addEventListener('online', () => { upFails = 0; pumpUploads(); });
 // ---------- camera ----------
 async function openCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
-  stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1920 } } });
+  // Ask for the camera's full 4:3 picture. A 16:9 or square request makes the camera crop its
+  // sensor, and with the iPad upright that cuts the width: the picture looks zoomed in.
+  stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1440 }, aspectRatio: { ideal: 4 / 3 } } });
+  await widest(stream.getVideoTracks()[0]);
   video.srcObject = stream;
   await video.play().catch(() => {});
   await new Promise(r => { if (video.videoWidth) r(); else video.onloadedmetadata = () => r(); });
+}
+
+// Zoom the camera all the way out when the browser allows it (?wide=0 turns this off).
+let camInfo = '';
+async function widest(track) {
+  camInfo = '';
+  try {
+    const caps = track.getCapabilities ? track.getCapabilities() : {}, set = track.getSettings();
+    if (Q.get('wide') !== '0' && caps.zoom && set.zoom > caps.zoom.min) await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+    const now = track.getSettings();
+    camInfo = `cam ${now.width}x${now.height}` + (caps.zoom ? `  zoom ${(+now.zoom).toFixed(2)} (min ${caps.zoom.min})` : '  zoom n/a');
+  } catch (e) { camInfo = 'cam zoom error: ' + e.message; }
 }
 
 // ---------- smile detection (MediaPipe Face Landmarker, served from this site) ----------
@@ -317,7 +332,7 @@ function loop(now) {
     else if (countEl.textContent !== String(n)) showCount(n);
   }
   ring.style.strokeDashoffset = String(RING_LEN * (1 - (state === 'countdown' ? Math.min(1, stateT / COUNT) : Math.min(1, hold / HOLD))));
-  if (DEBUG) $('debug').textContent = `state ${state}\nfaces ${faces}  smiling ${smiling}\nbest ${bestScore.toFixed(2)}  need ${SENS}\nhold ${hold.toFixed(2)} / ${HOLD}\ndetector ${detectOK ? 'on' : 'off'}  zoom ${farLandmarker ? ZOOM + 'x' : 'off'}\nnear ${seen.near.faces} faces  far ${seen.far.faces} faces`;
+  if (DEBUG) $('debug').textContent = `state ${state}\nfaces ${faces}  smiling ${smiling}\nbest ${bestScore.toFixed(2)}  need ${SENS}\nhold ${hold.toFixed(2)} / ${HOLD}\ndetector ${detectOK ? 'on' : 'off'}  zoom ${farLandmarker ? ZOOM + 'x' : 'off'}\nnear ${seen.near.faces} faces  far ${seen.far.faces} faces\n${camInfo}`;
   requestAnimationFrame(loop);
 }
 
