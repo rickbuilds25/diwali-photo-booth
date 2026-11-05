@@ -1,7 +1,8 @@
 /*
   Diwali photo frame — shared by the smile booth and the party gallery.
   DiwaliFrame.ready()                         -> loads fonts, builds the overlay (await once)
-  DiwaliFrame.compose(src, sw, sh, mirror)    -> 1080x1350 canvas with the photo framed
+  DiwaliFrame.compose(src, sw, sh, mirror, into, scale) -> (1080x1350 x scale) canvas with the photo framed
+  DiwaliFrame.fullScale(sw, sh)               -> the scale that keeps a sw x sh picture's full detail
   DiwaliFrame.overlay                         -> the frame with a transparent photo window (for live preview)
   DiwaliFrame.PHOTO                           -> {x, y, w, h} of the photo area (full canvas)
 */
@@ -172,8 +173,10 @@
 
   // Minimal overlay: the photo runs edge to edge; the frame adds only a slim marigold toran,
   // a fine gold inset line and a small stamp over a soft shadow at the bottom.
-  function buildOverlay() {
-    const c = mk(W, H), x = c.getContext('2d');
+  function buildOverlay(S = 1) {
+    // S > 1 draws the same frame at a higher resolution (same layout, crisper on big photos)
+    const c = mk(Math.round(W * S), Math.round(H * S)), x = c.getContext('2d');
+    x.scale(S, S);
     const r = rng(11);
     // soft shade at the top so the garland reads, and at the bottom for the stamp
     const top = x.createLinearGradient(0, 0, 0, 230); top.addColorStop(0, 'rgba(20,4,6,0.38)'); top.addColorStop(1, 'rgba(20,4,6,0)');
@@ -254,15 +257,23 @@
     x.drawImage(src, dx, dy, dw, dh);
     x.restore();
   }
-  function compose(src, sw, sh, mirror, into) {
-    const c = into || mk(W, H);
-    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  // scale: 1 = 1080x1350 (live preview). Photos pass a bigger scale so they keep the camera's detail.
+  const big = {};
+  function overlayAt(S) { if (S === 1) return overlay; const k = S.toFixed(2); return big[k] || (big[k] = buildOverlay(S)); }
+  function compose(src, sw, sh, mirror, into, scale) {
+    const S = Math.max(1, Math.min(3, scale || 1)), cw = Math.round(W * S), ch = Math.round(H * S);
+    const c = into || mk(cw, ch);
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
     const x = c.getContext('2d');
+    x.setTransform(S, 0, 0, S, 0, 0);
     x.fillStyle = '#1c0308'; x.fillRect(0, 0, W, H);
     drawPhoto(x, src, sw, sh, mirror);
-    x.drawImage(overlay, 0, 0);
+    x.drawImage(overlayAt(S), 0, 0, W, H);
+    x.setTransform(1, 0, 0, 1, 0, 0);
     return c;
   }
-  const api = { W, H, PHOTO, ready, compose, drawPhoto, overlay: null };
+  // The largest scale that does not enlarge a sw x sh picture
+  const fullScale = (sw, sh, cap = 3) => Math.max(1, Math.min(cap, sw / W, sh / H));
+  const api = { W, H, PHOTO, ready, compose, drawPhoto, fullScale, overlay: null };
   window.DiwaliFrame = api;
 })();

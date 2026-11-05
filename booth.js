@@ -208,6 +208,8 @@ async function openCamera() {
   video.srcObject = stream;
   await video.play().catch(() => {});
   await new Promise(r => { if (video.videoWidth) r(); else video.onloadedmetadata = () => r(); });
+  // build the big frame now, so the first photo is not slowed down by it
+  setTimeout(() => { try { const w = video.videoWidth, h = video.videoHeight; if (w) DiwaliFrame.compose(video, w, h, false, null, DiwaliFrame.fullScale(w, h)); } catch (e) {} }, 1500);
 }
 
 // Zoom the camera all the way out when the browser allows it (?wide=0 turns this off).
@@ -340,7 +342,7 @@ async function capture() {
   const raw = await bestFrame();                  // the sharpest of a short burst, as guests saw it
   if (SHARPEN > 0) sharpen(raw, SHARPEN);
   const vw = raw.width, vh = raw.height;
-  const c = DiwaliFrame.compose(raw, vw, vh, false);
+  const c = DiwaliFrame.compose(raw, vw, vh, false, null, DiwaliFrame.fullScale(vw, vh));   // full camera detail, no downscale
   const [blob, rawBlob] = await Promise.all([new Promise(r => c.toBlob(r, 'image/jpeg', 0.92)), new Promise(r => raw.toBlob(r, 'image/jpeg', 0.95))]);
   const p = { id: `p${Date.now()}`, ts: Date.now(), blob, raw: rawBlob, saved: false };
   try { await putPhoto(p); } catch (e) { console.warn('Could not keep photo on this phone', e); }
