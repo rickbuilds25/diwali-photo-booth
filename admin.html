@@ -110,7 +110,7 @@
   <div class="bottom"><button class="del" id="lbDel" type="button">Delete this photo</button></div>
 </div>
 <script src="config.js"></script>
-<script src="frame.js?v=1793911921"></script>
+<script src="frame.js?v=1794085647"></script>
 <script>
 (() => {
   'use strict';
@@ -304,7 +304,7 @@
   async function prepare(file, framed) {
     const { img, w, h } = await loadImage(file);
     let c;
-    if (framed) { await DiwaliFrame.ready(); c = DiwaliFrame.compose(img, w, h, false, null, DiwaliFrame.fullScale(w, h, 2048 / 1350)); }
+    if (framed) { await DiwaliFrame.ready(); c = DiwaliFrame.composeFit(img, w, h, 2048); }
     else { const k = Math.min(1, 2048 / Math.max(w, h)); c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); }
     const t = document.createElement('canvas'); t.width = 480; t.height = Math.round(c.height * 480 / c.width); t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
     return { full: await toJpeg(c, 0.9), thumb: await toJpeg(t, 0.8) };

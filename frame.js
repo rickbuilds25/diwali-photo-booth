@@ -173,8 +173,9 @@
 
   // Minimal overlay: the photo runs edge to edge; the frame adds only a slim marigold toran,
   // a fine gold inset line and a small stamp over a soft shadow at the bottom.
-  function buildOverlay(S = 1) {
-    // S > 1 draws the same frame at a higher resolution (same layout, crisper on big photos)
+  function buildOverlay(S = 1, W = 1080, H = 1350) {
+    // S > 1 draws the same frame at a higher resolution (same layout, crisper on big photos).
+    // W, H: frame size in layout units; portrait is 1080x1350, landscape photos get a wider frame.
     const c = mk(Math.round(W * S), Math.round(H * S)), x = c.getContext('2d');
     x.scale(S, S);
     const r = rng(11);
@@ -191,7 +192,9 @@
     for (const [cx, cy] of [[I, I], [W - I, I], [I, H - I], [W - I, H - I]]) { x.beginPath(); x.moveTo(cx, cy - 7); x.lineTo(cx + 7, cy); x.lineTo(cx, cy + 7); x.lineTo(cx - 7, cy); x.closePath(); x.fill(); }
 
     // toran: the original four-swag marigold garland, with strands down both sides and mango leaves at each knot
-    const anchors = [26, 290, 540, 790, 1054], AY = 40, SAG = 58;
+    let anchors = [26, 290, 540, 790, 1054]; const AY = 40, SAG = 58;
+    if (W !== 1080) { const n = Math.max(4, Math.round((W - 52) / 257)); anchors = []; for (let i = 0; i <= n; i++) anchors.push(26 + (W - 52) * i / n); }
+    const SW = anchors.length - 1;
     // ladiya: marigolds for the first part, then a beaded thread ending in a gold pendant
     const LAD = []; { let y = AY;
       for (let j = 0; j < 8; j++) { y += 31; LAD.push({ k: 'f', y }); }
@@ -200,17 +203,17 @@
     const LAD_END = LAD[LAD.length - 1].y;
     const PEND = makePendant(), PS = 0.9;
     x.strokeStyle = 'rgba(240,225,190,0.55)'; x.lineWidth = 1.5; x.beginPath();
-    for (let s2 = 0; s2 < 4; s2++) for (let i = 0; i <= 40; i++) { const u = i / 40, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u); if (!s2 && !i) x.moveTo(gx, gy); else x.lineTo(gx, gy); }
-    for (const sx of [30, 1050]) { x.moveTo(sx === 30 ? 26 : 1054, AY); x.lineTo(sx, LAD_END + 2); }
+    for (let s2 = 0; s2 < SW; s2++) for (let i = 0; i <= 40; i++) { const u = i / 40, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u); if (!s2 && !i) x.moveTo(gx, gy); else x.lineTo(gx, gy); }
+    for (const sx of [30, W - 30]) { x.moveTo(sx === 30 ? 26 : W - 26, AY); x.lineTo(sx, LAD_END + 2); }
     x.stroke();
-    for (let s2 = 0; s2 < 4; s2++) {
+    for (let s2 = 0; s2 < SW; s2++) {
       const n = 11;
       for (let i = 0; i <= n; i++) {
         const u = i / n, gx = anchors[s2] + (anchors[s2 + 1] - anchors[s2]) * u, gy = AY + SAG * 4 * u * (1 - u);
         marigold(x, gx, gy, 17, r() * TAU);
       }
     }
-    for (const [ax, sx] of [[26, 30], [1054, 1050]]) {
+    for (const [ax, sx] of [[26, 30], [W - 26, W - 30]]) {
       for (const it of LAD) {
         const px = ax + (sx - ax) * Math.min(1, (it.y - AY) / 260);
         if (it.k === 'f') marigold(x, px, it.y, 15, r() * TAU);
@@ -249,11 +252,11 @@
     return readyP;
   }
   // Draw the photo cover-cropped into the window. Faces sit in the upper half, so bias the crop upward a little.
-  function drawPhoto(x, src, sw, sh, mirror) {
-    const k = Math.max(PHOTO.w / sw, PHOTO.h / sh), dw = sw * k, dh = sh * k;
-    const dx = PHOTO.x + (PHOTO.w - dw) / 2, dy = PHOTO.y + Math.min(0, Math.max(PHOTO.h - dh, (PHOTO.h - dh) * 0.4));
-    x.save(); rrect(x, PHOTO.x, PHOTO.y, PHOTO.w, PHOTO.h, PHOTO.r); x.clip();
-    if (mirror) { x.translate(PHOTO.x * 2 + PHOTO.w, 0); x.scale(-1, 1); }
+  function drawPhoto(x, src, sw, sh, mirror, R = PHOTO) {
+    const k = Math.max(R.w / sw, R.h / sh), dw = sw * k, dh = sh * k;
+    const dx = R.x + (R.w - dw) / 2, dy = R.y + Math.min(0, Math.max(R.h - dh, (R.h - dh) * 0.4));
+    x.save(); rrect(x, R.x, R.y, R.w, R.h, R.r || 0); x.clip();
+    if (mirror) { x.translate(R.x * 2 + R.w, 0); x.scale(-1, 1); }
     x.drawImage(src, dx, dy, dw, dh);
     x.restore();
   }
@@ -274,6 +277,21 @@
   }
   // The largest scale that does not enlarge a sw x sh picture
   const fullScale = (sw, sh, cap = 3) => Math.max(1, Math.min(cap, sw / W, sh / H));
-  const api = { W, H, PHOTO, ready, compose, drawPhoto, fullScale, overlay: null };
+  // Landscape photos: a wide frame shaped like the photo itself, so nothing is cropped.
+  // Portrait photos use the normal 1080x1350 frame. maxLong caps the long side in pixels.
+  const wide = {};
+  function composeFit(src, sw, sh, maxLong = 2048) {
+    if (sw <= sh) return compose(src, sw, sh, false, null, fullScale(sw, sh, maxLong / H));
+    const LH = 1080, LW = Math.round(LH * Math.min(2.2, sw / sh));
+    const S = Math.max(1, Math.min(3, sw / LW, sh / LH, maxLong / LW));
+    const key = LW + 'x' + S.toFixed(2), ov = wide[key] || (wide[key] = buildOverlay(S, LW, LH));
+    const c = mk(Math.round(LW * S), Math.round(LH * S)), x = c.getContext('2d');
+    x.setTransform(S, 0, 0, S, 0, 0);
+    x.fillStyle = '#1c0308'; x.fillRect(0, 0, LW, LH);
+    drawPhoto(x, src, sw, sh, false, { x: 0, y: 0, w: LW, h: LH });
+    x.drawImage(ov, 0, 0, LW, LH);
+    return c;
+  }
+  const api = { W, H, PHOTO, ready, compose, composeFit, drawPhoto, fullScale, overlay: null };
   window.DiwaliFrame = api;
 })();
