@@ -13,6 +13,17 @@ const DEBUG = Q.has('debug');
 const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const AUTOSAVE = Q.get('autosave') === 'on' ? true : Q.get('autosave') === 'off' ? false : !IOS;
 const BATCH = 20;
+// The iPad share sheet fails silently on big batches; HD photos are large, so batch by size, not count.
+let shareMB = 40;
+function shareBatch(list) {
+  const out = []; let mb = 0;
+  for (const p of list.slice(0, BATCH)) {
+    const sz = ((p.blob && p.blob.size) || 0) + ((p.raw && p.raw.size) || 0);
+    if (out.length && mb + sz / 1048576 > shareMB) break;
+    out.push(p); mb += sz / 1048576;
+  }
+  return out;
+}
 function clampNum(v, a, b, d) { return Number.isFinite(v) && v > 0 ? Math.min(b, Math.max(a, v)) : d; }
 
 const $ = id => document.getElementById(id);
@@ -483,8 +494,8 @@ const unsavedItems = () => rollItems.filter(p => !p.exported);
 function updRollBtns() {
   if (IOS) {
     const left = unsavedItems();
-    $('saveSel').textContent = picked.size ? `Save ${Math.min(picked.size, BATCH)} picked to Photos`
-      : left.length ? `Save ${Math.min(left.length, BATCH)} to Photos${left.length > BATCH ? ` (${left.length} left)` : ''}` : 'All saved to Photos';
+    $('saveSel').textContent = picked.size ? `Save ${IOS ? shareBatch(rollItems.filter(p => picked.has(p.id))).length : picked.size} picked to Photos`
+      : left.length ? `Save ${IOS ? shareBatch(left).length : left.length} to Photos${left.length > BATCH ? ` (${left.length} left)` : ''}` : 'All saved to Photos';
     $('saveSel').disabled = !picked.size && !left.length;
   } else {
     $('saveSel').textContent = picked.size ? `Save ${picked.size} picked` : `Save all (${rollItems.length})`;
@@ -500,10 +511,14 @@ $('rollBtn').addEventListener('click', openRoll);
 $('closeRoll').addEventListener('click', () => { $('roll').hidden = true; go('cooldown'); });
 $('saveSel').addEventListener('click', async () => {
   let list = picked.size ? rollItems.filter(p => picked.has(p.id)) : (IOS ? unsavedItems() : rollItems);
-  if (IOS) list = list.slice(0, BATCH);       // the share sheet handles a batch of 20 photos (40 files) comfortably
-  const r = await savePhotos(list);
+  if (IOS) list = shareBatch(list);           // the share sheet refuses big batches, so keep each one small
+  const t0 = performance.now();
+  let r = await savePhotos(list);
+  // Safari answers "cancelled" at once, without showing the sheet, when a batch is too big: use smaller batches.
+  if (IOS && r === 'cancelled' && performance.now() - t0 < 1500 && list.length > 1) { shareMB = Math.max(4, shareMB / 2); r = 'toobig'; }
   const n = `${list.length} photo${list.length === 1 ? '' : 's'}`;
-  $('rollNote').textContent = r === 'cancelled' ? 'Nothing saved. Tap the button again and choose "Save Images".'
+  $('rollNote').textContent = r === 'toobig' ? 'That batch was too big for the share sheet. Tap the button again: it now saves fewer photos at a time.'
+    : r === 'cancelled' ? 'Nothing saved. Tap the button again and choose "Save Images".'
     : r === 'failed' ? 'Saving did not work. Try again with fewer photos picked.'
     : IOS ? `Saved ${n} with their originals. ${unsavedItems().length ? 'Tap the button again for the next batch.' : 'Everything is in Photos now.'}`
     : `Saved ${n} with their originals to Downloads.`;
