@@ -154,7 +154,18 @@ async function postScript(obj) {
   if (!j.ok) throw new Error(j.error === 'bad_key' ? 'the upload key on this device does not match the script' : 'the script said: ' + (j.error || 'unknown error'));
   return j;
 }
-function blobToBase64(b) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(b); }); }
+// Read a photo as base64. Safari sometimes fails FileReader on large blobs from storage, so try
+// blob.arrayBuffer() first and fall back to FileReader; failures get a readable message.
+async function blobToBase64(b) {
+  try {
+    const u = new Uint8Array(await b.arrayBuffer()); let s = '';
+    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return btoa(s);
+  } catch (e) {
+    return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(new Error('could not read a photo from the iPad storage')); r.readAsDataURL(b); });
+  }
+}
+class ReadError extends Error {}
 async function queueUpload(items) {
   if (!GALLERY_ON) return;
   for (const p of items) if (!p.uploaded && !p.toUpload) { p.toUpload = true; try { await putPhoto(p); } catch (e) {} }
@@ -168,8 +179,17 @@ async function pumpUploads() {
     try { list = (await allPhotos()).filter(p => p.toUpload && !p.uploaded).reverse(); } catch (e) {}
     for (const p of list) {
       if (state === 'countdown' || state === 'capturing') break;          // never slow down a capture
-      const body = JSON.stringify({ key: GALLERY_KEY, name: fname(p.ts), data: await blobToBase64(p.blob), thumb: await blobToBase64(await thumbOf(p.blob)) });
-      const j = await postScript(JSON.parse(body));
+      // Read this photo; if it cannot be read, skip it (after a few tries) so it does not block the rest.
+      let data, thumb;
+      try { data = await blobToBase64(p.blob); } catch (e) {
+        p.readFails = (p.readFails || 0) + 1;
+        if (p.readFails >= 3) { p.toUpload = false; p.uploadSkipped = true; }
+        try { await putPhoto(p); } catch (e2) {}
+        upError = 'one photo could not be read from the iPad storage' + (p.uploadSkipped ? ' and was skipped (save it to Photos instead)' : '');
+        continue;
+      }
+      try { thumb = await blobToBase64(await thumbOf(p.blob)); } catch (e) { thumb = ''; }
+      const j = await postScript({ key: GALLERY_KEY, name: fname(p.ts), data, thumb });
       p.uploaded = true; p.toUpload = false; p.driveId = j.id;
       try { await putPhoto(p); } catch (e) {}
       const shown = rollItems.find(x => x.id === p.id); if (shown) { shown.uploaded = true; shown.toUpload = false; shown.driveId = j.id; }
@@ -177,7 +197,7 @@ async function pumpUploads() {
       upFails = 0; upError = ''; refreshRoll(); if (!$('roll').hidden) markTiles();
     }
   } catch (e) {
-    upFails++; upError = e.message || String(e); console.warn('Guest gallery upload failed; will retry', e);
+    upFails++; upError = (e && e.message) || (e && e.type ? 'a ' + e.type + ' error while reading a photo' : String(e)); console.warn('Guest gallery upload failed; will retry', e);
     refreshRoll(); if (!$('roll').hidden) $('rollNote').textContent = 'Upload to the guest gallery is not working: ' + upError + '. The booth keeps retrying.';
   } finally {
     upBusy = false;
